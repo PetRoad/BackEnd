@@ -1,0 +1,12 @@
+services:
+  db:
+    image: postgres:16
+    container_name: walkmate-postgres
+    environment:
+      POSTGRES_DB: walkmate
+      POSTGRES_USER: walkmate
+      POSTGRES_PASSWORD: walkmate
+    ports: ["5432:5432"]
+    volumes: [walkmate-postgres:/var/lib/postgresql/data]
+volumes:
+  walkmate-postgres:
