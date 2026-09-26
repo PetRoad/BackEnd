@@ -1,4 +1,4 @@
-package com.walkmate.backend.security;
+package com.petroad.backend.security;
 
 import jakarta.servlet.http.HttpServletRequest; import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor; import org.springframework.stereotype.Component; import org.springframework.web.servlet.HandlerInterceptor;

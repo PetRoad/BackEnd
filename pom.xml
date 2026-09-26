@@ -8,10 +8,10 @@
         <version>3.3.5</version>
         <relativePath/>
     </parent>
-    <groupId>com.walkmate</groupId>
-    <artifactId>walkmate-backend</artifactId>
+    <groupId>com.petroad</groupId>
+    <artifactId>petroad-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>walkmate-backend</name>
+    <name>petroad-backend</name>
     <description>반려동물 산책 코스 공유 서비스 백엔드</description>
     <properties><java.version>17</java.version><jjwt.version>0.12.6</jjwt.version></properties>
     <dependencies>

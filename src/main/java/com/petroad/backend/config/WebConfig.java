@@ -1,6 +1,6 @@
-package com.walkmate.backend.config;
+package com.petroad.backend.config;
 
-import com.walkmate.backend.security.JwtInterceptor;
+import com.petroad.backend.security.JwtInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;

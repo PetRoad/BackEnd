@@ -1,4 +1,4 @@
-package com.walkmate.backend.domain;
+package com.petroad.backend.domain;
 import jakarta.persistence.*; import lombok.*; import java.util.*;
 @Entity @Getter @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class Course { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @ManyToOne(fetch=FetchType.LAZY,optional=false) private User user; private String name,coverImageUrl; private double distance,startLat,startLng; @Enumerated(EnumType.STRING) private Difficulty difficulty; @Enumerated(EnumType.STRING) private DogSize dogSize; private int likeCount;

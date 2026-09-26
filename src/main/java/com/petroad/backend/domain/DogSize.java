@@ -1,2 +1,2 @@
-package com.walkmate.backend.domain;
+package com.petroad.backend.domain;
 public enum DogSize { SMALL, MEDIUM, LARGE }

@@ -1,5 +1,5 @@
-package com.walkmate.backend.api;
-import com.walkmate.backend.domain.*; import com.walkmate.backend.repository.*; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.RequiredArgsConstructor; import org.springframework.web.bind.annotation.*;
+package com.petroad.backend.api;
+import com.petroad.backend.domain.*; import com.petroad.backend.repository.*; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.RequiredArgsConstructor; import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/dog") @RequiredArgsConstructor public class DogController { private final DogRepository dogs; private final UserRepository users;
  public record DogRequest(@NotBlank String name,String breed,DogSize size,java.time.LocalDate birthDate,String profileImage){} public record DogResponse(Long id,String name,String breed,DogSize size,java.time.LocalDate birthDate,String profileImage){}
  @GetMapping public DogResponse get(@RequestAttribute("userId") Long userId){return dogs.findByUserId(userId).map(this::response).orElseThrow(()->new IllegalArgumentException("반려견 프로필이 없습니다."));}

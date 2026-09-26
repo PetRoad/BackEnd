@@ -1,5 +1,5 @@
-package com.walkmate.backend.api;
-import com.walkmate.backend.domain.*; import com.walkmate.backend.repository.*; import com.walkmate.backend.security.JwtService; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.RequiredArgsConstructor; import org.springframework.security.crypto.password.PasswordEncoder; import org.springframework.web.bind.annotation.*;
+package com.petroad.backend.api;
+import com.petroad.backend.domain.*; import com.petroad.backend.repository.*; import com.petroad.backend.security.JwtService; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.RequiredArgsConstructor; import org.springframework.security.crypto.password.PasswordEncoder; import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
 public class AuthController { private final UserRepository users; private final DogRepository dogs; private final PasswordEncoder encoder; private final JwtService jwt;
  public record Signup(@Email @NotBlank String email,@Size(min=8) String password,@NotBlank String region,String dogName,String breed,DogSize dogSize,java.time.LocalDate birthDate,String profileImage){} public record Login(@Email String email,@NotBlank String password){} public record Token(String accessToken,Long userId){}

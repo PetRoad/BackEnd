@@ -1,4 +1,4 @@
-package com.walkmate.backend.domain;
+package com.petroad.backend.domain;
 import jakarta.persistence.*; import lombok.*; import java.time.LocalDate;
 @Entity @Getter @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class Dog { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @OneToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="user_id",unique=true) private User user; private String name,breed,profileImage; @Enumerated(EnumType.STRING) private DogSize size; private LocalDate birthDate;

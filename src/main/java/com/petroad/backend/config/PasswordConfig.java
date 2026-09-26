@@ -1,4 +1,4 @@
-package com.walkmate.backend.config;
+package com.petroad.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

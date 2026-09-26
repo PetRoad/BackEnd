@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/walkmate}
-    username: ${DB_USERNAME:walkmate}
-    password: ${DB_PASSWORD:walkmate}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/petroad}
+    username: ${DB_USERNAME:petroad}
+    password: ${DB_PASSWORD:petroad}
   jpa:
     hibernate:
       ddl-auto: update

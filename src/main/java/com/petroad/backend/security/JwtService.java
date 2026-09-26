@@ -1,4 +1,4 @@
-package com.walkmate.backend.security;
+package com.petroad.backend.security;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

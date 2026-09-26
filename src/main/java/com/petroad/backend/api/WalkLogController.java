@@ -1,5 +1,5 @@
-package com.walkmate.backend.api;
-import com.walkmate.backend.domain.*; import com.walkmate.backend.repository.*; import jakarta.validation.Valid; import jakarta.validation.constraints.PositiveOrZero; import lombok.RequiredArgsConstructor; import org.springframework.web.bind.annotation.*; import java.time.LocalDateTime; import java.util.*;
+package com.petroad.backend.api;
+import com.petroad.backend.domain.*; import com.petroad.backend.repository.*; import jakarta.validation.Valid; import jakarta.validation.constraints.PositiveOrZero; import lombok.RequiredArgsConstructor; import org.springframework.web.bind.annotation.*; import java.time.LocalDateTime; import java.util.*;
 @RestController @RequestMapping("/api/walk-logs") @RequiredArgsConstructor public class WalkLogController { private final WalkLogRepository logs; private final UserRepository users; private final CourseRepository courses;
  public record Create(Long courseId,@PositiveOrZero double distance){} public record Response(Long id,Long courseId,double distance,LocalDateTime walkedAt){}
  @PostMapping public Response create(@RequestAttribute("userId") Long userId,@Valid @RequestBody Create r){Course c=r.courseId()==null?null:courses.findById(r.courseId()).orElseThrow(); return to(logs.save(new WalkLog(users.findById(userId).orElseThrow(),c,r.distance())));}

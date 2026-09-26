@@ -1,0 +1,1 @@
+package com.petroad.backend.repository; import com.petroad.backend.domain.Dog; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface DogRepository extends JpaRepository<Dog,Long>{Optional<Dog> findByUserId(Long userId);}

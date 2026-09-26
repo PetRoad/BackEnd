@@ -1,1 +1,0 @@
-package com.walkmate.backend.repository; import com.walkmate.backend.domain.WalkLog; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface WalkLogRepository extends JpaRepository<WalkLog,Long>{List<WalkLog> findAllByUserIdOrderByWalkedAtDesc(Long id);}

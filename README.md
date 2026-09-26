@@ -1,4 +1,4 @@
-# Walkmate Backend
+# PetRoad Backend
 
 반려동물 산책 코스 공유 서비스의 Spring Boot 백엔드 MVP입니다.
 

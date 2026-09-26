@@ -1,1 +1,0 @@
-package com.walkmate.backend.repository; import com.walkmate.backend.domain.Dog; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface DogRepository extends JpaRepository<Dog,Long>{Optional<Dog> findByUserId(Long userId);}
