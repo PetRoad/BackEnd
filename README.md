@@ -33,6 +33,20 @@ Swagger: http://localhost:8080/swagger-ui.html
 
 이미지 업로드는 MVP에서 S3 또는 Cloudinary의 업로드 URL을 요청 본문으로 받는 방식으로 두었습니다. 실제 파일 업로드가 필요해지는 시점에 presigned URL API를 추가하면 됩니다.
 
-## 브랜치와 커밋
+## 이슈부터 PR까지
 
-`main`은 배포 가능한 상태로 유지하고, 작업은 `develop` 또는 `feat/<기능명>` 브랜치에서 진행합니다. 커밋은 `feat:`, `fix:`, `docs:`, `refactor:` 접두사를 사용합니다.
+1. 이슈를 만들고 담당자를 정합니다. 기능·오류·리팩터링·저장소 작업 양식은 `.github/ISSUE_TEMPLATE/`에 있습니다.
+2. `develop`에서 이슈 번호가 들어간 작업 브랜치를 만듭니다.
+3. 작업 후 `develop` 대상으로 PR을 열고 다른 팀원의 리뷰를 받습니다. PR 본문에 `Closes #이슈번호`를 적습니다.
+4. CI의 Java 17 빌드·테스트가 통과하면 병합합니다. 시연·배포할 변경을 모아 `develop`에서 `main`으로 PR을 엽니다.
+
+```bash
+git fetch origin
+git switch develop
+git pull --ff-only origin develop
+git switch -c 'feat/walk-log#12'  # 이슈 #12 예시
+# 작업 후
+git push -u origin 'feat/walk-log#12'
+```
+
+브랜치 앞부분은 작업에 따라 `feat/`, `fix/`, `refactor/`, `chore/`를 사용합니다. 커밋은 `feat:`, `fix:`, `refactor:`, `chore:`, `docs:` 접두사를 사용합니다.
