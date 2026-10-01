@@ -10,14 +10,56 @@
 
 ## 실행
 
+### 개발 환경
+
+- Java 17 이상
+- Maven 3.9 이상
+- Docker Desktop (PostgreSQL 실행용)
+
+설치 여부는 아래 명령으로 확인할 수 있습니다.
+
+```bash
+java -version
+mvn -version
+docker --version
+```
+
 ```bash
 docker compose up -d db
 mvn spring-boot:run
 ```
 
+Windows에서는 Docker Desktop을 먼저 실행한 후, 이 디렉터리(`BackEnd`)에서 위 명령을 실행하세요.
+
+경로에 한글이 포함된 Windows 환경에서 `spring-boot:run` 실행 시
+`ClassNotFoundException: com.petroad.backend.PetRoadApplication`이 발생할 수 있습니다.
+이 경우 프로젝트를 `C:\dev\PetRoad`처럼 영문 경로로 이동한 뒤 다시 실행하거나,
+아래처럼 JAR로 실행하세요.
+
+```bash
+mvn clean package -DskipTests
+java -jar target/petroad-backend-0.0.1-SNAPSHOT.jar
+```
+
 기본 DB 접속 정보는 `application.yml`과 `docker-compose.yml`을 따르며, 운영 환경에서는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`을 반드시 변경하세요.
 
 Swagger: http://localhost:8080/swagger-ui.html
+
+개발 환경 확인용 Hello World API는 인증 없이 호출할 수 있습니다.
+
+```http
+GET http://localhost:8080/api/hello
+```
+
+응답:
+
+```text
+Hello World
+```
+
+Swagger UI에서 `Hello World 확인` 항목의 `GET /api/hello`를 선택한 뒤
+`Try it out` → `Execute` 순서로 호출할 수 있습니다. OpenAPI 문서는
+`http://localhost:8080/v3/api-docs`에서 확인할 수 있습니다.
 
 ## API
 
