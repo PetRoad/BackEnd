@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: petroad-backend-demo
+    runtime: docker
+    plan: free
+    branch: feat/hello-world-swagger
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
