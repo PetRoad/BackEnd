@@ -61,26 +61,15 @@ Swagger UI에서 `Hello World 확인` 항목의 `GET /api/hello`를 선택한 �
 `Try it out` → `Execute` 순서로 호출할 수 있습니다. OpenAPI 문서는
 `http://localhost:8080/v3/api-docs`에서 확인할 수 있습니다.
 
-## 무료 공유용 배포 (Render + Neon)
+## 공용 서버 배포
 
-팀원이 브라우저에서 접속할 수 있는 Swagger URL을 만들려면 백엔드와 PostgreSQL을 외부에 배포해야 합니다.
-아래 구성은 테스트·데모용이며, 무료 서비스는 유휴 시 잠들거나 사용량 제한이 있을 수 있습니다.
+팀원이 함께 사용할 Swagger URL을 만들려면 백엔드와 PostgreSQL이 공용 서버에서 실행되어야 합니다.
+서버 배포 시 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` 환경변수를 서버 담당자에게 전달받아 설정하세요.
+비밀값은 저장소에 커밋하지 마세요. 서버 배포가 완료되면 서버 담당자가 제공한 주소에
+`/swagger-ui/index.html`을 붙여 접속합니다. 예: `https://<서버 주소>/swagger-ui/index.html`.
 
-1. Neon에서 PostgreSQL 프로젝트를 만들고 접속 정보를 준비합니다.
-2. 이 브랜치의 `Dockerfile`과 `render.yaml`을 GitHub에 push합니다.
-3. Render에서 **New → Blueprint**를 선택하고 `PetRoad/BackEnd` 저장소 및 `feat/hello-world-swagger` 브랜치를 연결합니다.
-4. Blueprint가 요청하는 DB 환경변수에 Neon 접속 정보를 입력합니다. 비밀값은 Git에 커밋하지 마세요.
-
-   - `DB_URL`: Neon의 JDBC 주소. 형식은 `jdbc:postgresql://<Neon 호스트>/<DB 이름>?sslmode=require`
-   - `DB_USERNAME`: Neon에서 제공한 사용자 이름
-   - `DB_PASSWORD`: Neon에서 제공한 비밀번호
-
-   `JWT_SECRET`은 Blueprint가 자동 생성합니다. Render가 제공하는 `PORT` 값은 애플리케이션에서 자동으로 사용합니다.
-5. 배포가 Live가 되면 Render가 발급한 주소에 `/swagger-ui/index.html`을 붙여 팀원과 공유합니다.
-   예: `https://<Render 서비스 이름>.onrender.com/swagger-ui/index.html`
-
-무료 Render 웹 서비스는 일정 시간 요청이 없으면 잠들 수 있어 첫 접속에 시간이 걸릴 수 있습니다.
-Neon 무료 DB도 유휴 후 다시 활성화될 수 있습니다. 무료 티어는 데모 용도로 사용하고 실제 서비스 데이터는 저장하지 마세요.
+저장소의 `Dockerfile`은 Docker를 이용해 백엔드를 빌드하고 실행할 때 사용할 수 있습니다.
+실제 배포 방식과 DB 접속 정보는 팀의 오라클 서버 구성에 맞춰야 합니다.
 
 ## API
 
