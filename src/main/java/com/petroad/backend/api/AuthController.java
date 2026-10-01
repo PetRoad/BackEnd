@@ -1,9 +1,53 @@
 package com.petroad.backend.api;
-import com.petroad.backend.domain.*; import com.petroad.backend.repository.*; import com.petroad.backend.security.JwtService; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import lombok.RequiredArgsConstructor; import org.springframework.security.crypto.password.PasswordEncoder; import org.springframework.web.bind.annotation.*;
-@RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
-public class AuthController { private final UserRepository users; private final DogRepository dogs; private final PasswordEncoder encoder; private final JwtService jwt;
- public record Signup(@Email @NotBlank String email,@Size(min=8) String password,@NotBlank String region,String dogName,String breed,DogSize dogSize,java.time.LocalDate birthDate,String profileImage){} public record Login(@Email String email,@NotBlank String password){} public record Token(String accessToken,Long userId){}
- @PostMapping("/signup") public Token signup(@Valid @RequestBody Signup r){if(users.findByEmail(r.email()).isPresent())throw new IllegalArgumentException("이미 가입된 이메일입니다."); User u=users.save(new User(r.email(),encoder.encode(r.password()),r.region())); if(r.dogName()!=null) dogs.save(new Dog(u,r.dogName(),r.breed(),r.dogSize(),r.birthDate(),r.profileImage())); return new Token(jwt.issue(u.getId()),u.getId());}
- @PostMapping("/login") public Token login(@Valid @RequestBody Login r){User u=users.findByEmail(r.email()).orElseThrow(()->new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.")); if(!encoder.matches(r.password(),u.getPassword()))throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."); return new Token(jwt.issue(u.getId()),u.getId());}
- @GetMapping("/health") public java.util.Map<String,String> health(){return java.util.Map.of("status","ok");}
+
+import com.petroad.backend.domain.*;
+import com.petroad.backend.repository.*;
+import com.petroad.backend.security.JwtService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+    private final UserRepository users;
+    private final DogRepository dogs;
+    private final PasswordEncoder encoder;
+    private final JwtService jwt;
+
+    public record Signup(@Email @NotBlank String email, @Size(min = 8) String password,
+                         @NotBlank @Size(max = 15) String nickname, @NotBlank String region, String dogName,
+                         String breed, DogSize dogSize, java.time.LocalDate birthDate, String profileImage) {
+    }
+
+    public record Login(@Email String email, @NotBlank String password) {
+    }
+
+    public record Token(String accessToken, Long userId) {
+    }
+
+    @PostMapping("/signup")
+    public Token signup(@Valid @RequestBody Signup r) {
+        if (users.findByEmail(r.email()).isPresent()) throw new IllegalArgumentException("이미 가입된 이메일입니다.");
+        User u = users.save(new User(r.email(), encoder.encode(r.password()), r.nickname(), r.region()));
+        if (r.dogName() != null)
+            dogs.save(new Dog(u, r.dogName(), r.breed(), r.dogSize(), r.birthDate(), r.profileImage()));
+        return new Token(jwt.issue(u.getId()), u.getId());
+    }
+
+    @PostMapping("/login")
+    public Token login(@Valid @RequestBody Login r) {
+        User u = users.findByEmail(r.email()).orElseThrow(() -> new AuthenticationFailedException("이메일 또는 비밀번호가 올바르지 않습니다."));
+        if (!encoder.matches(r.password(), u.getPassword()))
+            throw new AuthenticationFailedException("이메일 또는 비밀번호가 올바르지 않습니다.");
+        return new Token(jwt.issue(u.getId()), u.getId());
+    }
+
+    @GetMapping("/health")
+    public java.util.Map<String, String> health() {
+        return java.util.Map.of("status", "ok");
+    }
 }
