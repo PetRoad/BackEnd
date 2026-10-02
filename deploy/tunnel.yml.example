@@ -1,0 +1,6 @@
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: /run/secrets/tunnel.json
+ingress:
+  - hostname: petroad-api.hrxlou.com
+    service: http://api:8080
+  - service: http_status:404

@@ -64,6 +64,8 @@ Swagger UI에서 `Hello World 확인` 항목의 `GET /api/hello`를 선택한 �
 
 ## 공용 서버 배포
 
+개발 서버·자동배포·DB 마이그레이션·백업 설정은 [배포 안내](deploy/README.md)에 있습니다.
+
 팀원이 함께 사용할 Swagger URL을 만들려면 백엔드와 PostgreSQL이 공용 서버에서 실행되어야 합니다.
 서버 배포 시 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` 환경변수를 서버 담당자에게 전달받아 설정하세요.
 비밀값은 저장소에 커밋하지 마세요. 서버 배포가 완료되면 서버 담당자가 제공한 주소에
