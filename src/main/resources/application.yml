@@ -15,9 +15,19 @@ spring:
     property-naming-strategy: SNAKE_CASE
 server:
   port: ${PORT:8080}
+  forward-headers-strategy: none
 jwt:
-  secret: ${JWT_SECRET:change-this-secret-key-to-at-least-32-characters}
+  secret: ${JWT_SECRET:}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+security:
+  login:
+    max-failures: ${LOGIN_MAX_FAILURES:5}
+    failure-window: ${LOGIN_FAILURE_WINDOW:15m}
+    lock-duration: ${LOGIN_LOCK_DURATION:15m}
+    ip-max-attempts: ${LOGIN_IP_MAX_ATTEMPTS:30}
+    ip-window: ${LOGIN_IP_WINDOW:1m}
+    max-tracked-entries: ${LOGIN_MAX_TRACKED_ENTRIES:10000}
+    trusted-proxy-addresses: ${LOGIN_TRUSTED_PROXY_ADDRESSES:}
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
