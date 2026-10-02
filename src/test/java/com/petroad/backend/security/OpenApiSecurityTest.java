@@ -32,6 +32,7 @@ class OpenApiSecurityTest {
     @Test void bootBindsDefaultSecuritySettingsAndPublishesPasswordErrorsAndRetryAfter() throws Exception {
         String json = mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.info.title").value("PetRoad Swagger"))
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['400']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['429'].headers['Retry-After']").exists())
