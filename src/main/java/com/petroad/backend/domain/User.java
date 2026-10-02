@@ -17,16 +17,16 @@ public class User {
     private String email;
     @Column(nullable = false)
     private String password;
-    @Column(nullable = false, length = 15)
-    private String nickname;
     private String region;
     private LocalDateTime createdAt;
 
-    public User(String email, String password, String nickname, String region) {
+    public User(String email, String password) {
         this.email = email;
         this.password = password;
-        this.nickname = nickname;
-        this.region = region;
         this.createdAt = LocalDateTime.now();
+    }
+
+    public void updateRegion(String region) {
+        this.region = region;
     }
 }
