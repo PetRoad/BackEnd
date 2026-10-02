@@ -6,7 +6,7 @@ services:
       POSTGRES_DB: petroad
       POSTGRES_USER: petroad
       POSTGRES_PASSWORD: petroad
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
     volumes: [petroad-postgres:/var/lib/postgresql/data]
 volumes:
   petroad-postgres:

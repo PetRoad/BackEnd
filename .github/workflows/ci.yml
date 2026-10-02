@@ -1,0 +1,117 @@
+name: Backend CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: petroad_test
+          POSTGRES_USER: petroad_test
+          POSTGRES_PASSWORD: test-only-password
+        ports: [5432/tcp]
+        options: >-
+          --health-cmd "pg_isready -U petroad_test -d petroad_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Build and test
+        env:
+          PETROAD_DB_TEST_URL: jdbc:postgresql://127.0.0.1:${{ job.services.postgres.ports[5432] }}/petroad_test
+        run: mvn -B -ntp verify
+      - name: Check deployment scripts
+        run: bash -n deploy/*.sh deploy/initdb/*.sh
+
+  publish:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish ARM64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/petroad/backend:sha-${{ github.sha }}
+          build-args: APP_COMMIT=${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+
+  deploy:
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: petroad-develop-deployment
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Configure dedicated SSH identity
+        env:
+          DEPLOY_KEY: ${{ secrets.PETROAD_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PETROAD_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/petroad-deploy
+          chmod 600 ~/.ssh/petroad-deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy the verified image
+        env:
+          DEPLOY_HOST: ${{ vars.PETROAD_DEPLOY_HOST }}
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s\n' "$GH_TOKEN" | ssh -T -i ~/.ssh/petroad-deploy -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 "petroad-deploy@$DEPLOY_HOST" \
+            "deploy $COMMIT $RUN_ID $DIGEST $ACTOR"
+      - name: Verify the public endpoint
+        env:
+          COMMIT: ${{ github.sha }}
+        run: |
+          for attempt in {1..12}; do
+            if response=$(curl --fail --silent --show-error --max-time 10 https://petroad-api.hrxlou.com/api/health); then
+              if printf '%s' "$response" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="ok" and d.get("commit")==sys.argv[1] else 1)' "$COMMIT"; then
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Remove runner SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/petroad-deploy ~/.ssh/known_hosts

@@ -1,0 +1,10 @@
+.git
+.idea
+.vscode
+target
+*.log
+.env*
+deploy/secrets
+deploy/*.dump
+**/*.key
+**/*.pem
