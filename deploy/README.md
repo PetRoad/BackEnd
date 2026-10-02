@@ -85,6 +85,6 @@ DB 복구는 현재 데이터를 덮어쓰므로 관리자가 서비스 중단�
 - Swagger: `https://petroad-api.hrxlou.com/swagger-ui/index.html`
 - OpenAPI: `https://petroad-api.hrxlou.com/v3/api-docs`
 
-Swagger에서 회원가입·로그인 후 `access_token`을 Authorize에 입력하면 실제 API를 테스트할 수 있습니다. 요청은 실제 개발 서버 DB에 기록되므로 테스트 계정을 구분해서 사용하세요.
+Swagger에서 회원가입 후 로그인 응답의 `accessToken`을 Authorize에 입력하면 실제 API를 테스트할 수 있습니다. 회원가입 응답에는 토큰이 없습니다. 요청은 실제 개발 서버 DB에 기록되므로 테스트 계정을 구분해서 사용하세요.
 
 마이그레이션 테스트는 전용 빈 PostgreSQL DB에서 실행합니다. 테스트가 기존 데이터·스키마를 추가하므로 개인 개발 DB나 서버 DB를 지정하지 마세요. CI는 전용 PostgreSQL 서비스를 사용하고, 로컬에서 DB 환경변수를 지정하지 않으면 인증 테스트만 실행합니다.

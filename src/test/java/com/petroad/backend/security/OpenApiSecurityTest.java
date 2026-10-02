@@ -39,7 +39,7 @@ class OpenApiSecurityTest {
                 .andExpect(jsonPath("$.components.schemas.Login.properties.password.description")
                         .value(org.hamcrest.Matchers.containsString("72바이트")))
                 .andExpect(jsonPath("$.components.schemas.Signup.properties.password.description")
-                        .value(org.hamcrest.Matchers.containsString("72바이트")))
+                        .value(org.hamcrest.Matchers.containsString("8~14자")))
                 .andExpect(jsonPath("$.servers[0].url").value("https://petroad-api.hrxlou.com"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
                 .andExpect(jsonPath("$.paths['/api/dog'].get.security[0].bearerAuth").exists())

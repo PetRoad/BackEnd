@@ -1,7 +1,6 @@
 package com.petroad.backend.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.petroad.backend.api.*;
 import com.petroad.backend.config.PasswordConfig;
 import com.petroad.backend.domain.User;
@@ -23,27 +22,27 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class AuthApiTest {
     private static final String LEGACY_HASH = "$2a$10$abcdefghijklmnopqrstuuc6nhYTWdrlFaaMkzIm7puP.wHDe.5rq";
-    private final ObjectMapper mapper = new ObjectMapper().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+    private final ObjectMapper mapper = new ObjectMapper().disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     private UserRepository users;
-    private DogRepository dogs;
     private MockMvc mvc;
     private MutableClock clock;
     private PasswordEncoder encoder;
 
     @BeforeEach void setup() {
         users = mock(UserRepository.class);
-        dogs = mock(DogRepository.class);
         encoder = new PasswordConfig().passwordEncoder();
         clock = new MutableClock();
         var properties = LoginThrottleTest.settings(5, 30, 100);
-        var controller = new AuthController(users, dogs, encoder, new JwtService(JwtServiceTest.KEY, 60000),
+        var jwt = new JwtService(JwtServiceTest.KEY, 60000);
+        var controller = new AuthController(users, encoder, jwt,
                 new LoginThrottle(properties, clock), new ClientIpResolver(properties));
-        mvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new ApiExceptionHandler())
+        mvc = MockMvcBuilders.standaloneSetup(controller, new UserController(users))
+                .addMappedInterceptors(new String[]{"/api/users/**"}, new JwtInterceptor(jwt)).setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper)).build();
         when(users.findByEmail(anyString())).thenReturn(Optional.empty());
         when(users.save(any(User.class))).thenAnswer(invocation -> {
@@ -54,9 +53,7 @@ class AuthApiTest {
     }
 
     private MockHttpServletRequestBuilder request(String path, String email, String password, String ip) throws Exception {
-        Map<String, String> body = path.endsWith("/signup")
-                ? Map.of("email", email, "password", password, "region", "서울")
-                : Map.of("email", email, "password", password);
+        Map<String, String> body = Map.of("email", email, "password", password);
         return post(path).contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(body))
                 .with(servlet -> { servlet.setRemoteAddr(ip); return servlet; });
@@ -69,27 +66,65 @@ class AuthApiTest {
     void signupAndLoginRejectOverlongUtf8BeforeTouchingDatabase(String password) throws Exception {
         for (String path : new String[]{"/api/auth/signup", "/api/auth/login"}) {
             mvc.perform(request(path, "user@example.com", password, "192.0.2.1"))
-                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("72바이트")));
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").isString());
         }
-        verifyNoInteractions(users, dogs);
+        verifyNoInteractions(users);
     }
 
     @ParameterizedTest @MethodSource("boundaryPasswords")
-    void exactly72BytesCanBeStoredAndAuthenticatedWithoutTruncation(String password) throws Exception {
+    void existing72BytePasswordsStillAuthenticateWithoutTruncation(String password) throws Exception {
+        User user = new User("user@example.com", encoder.encode(password));
+        org.springframework.test.util.ReflectionTestUtils.setField(user, "id", 42L);
+        when(users.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+        mvc.perform(request("/api/auth/login", "user@example.com", password, "192.0.2.1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(jsonPath("$.userId").value(42)).andExpect(jsonPath("$.access_token").doesNotExist());
+    }
+
+    @Test void signupThenLoginAndRegionSetupUseTheNewContract() throws Exception {
+        String password = "Password123!";
         mvc.perform(request("/api/auth/signup", "user@example.com", password, "192.0.2.1"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.access_token").isString());
+                .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(42))
+                .andExpect(jsonPath("$.email").value("user@example.com"))
+                .andExpect(jsonPath("$.accessToken").doesNotExist()).andExpect(jsonPath("$.access_token").doesNotExist());
         var captor = org.mockito.ArgumentCaptor.forClass(User.class);
         verify(users).save(captor.capture());
         User saved = captor.getValue();
+        assertThat(saved.getRegion()).isNull();
         assertThat(saved.getPassword()).isNotEqualTo(password);
         assertThat(encoder.matches(password, saved.getPassword())).isTrue();
         when(users.findByEmail("user@example.com")).thenReturn(Optional.of(saved));
-        mvc.perform(request("/api/auth/login", "user@example.com", password, "192.0.2.1"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.user_id").value(42));
+        when(users.findById(42L)).thenReturn(Optional.of(saved));
+        String response = mvc.perform(request("/api/auth/login", "user@example.com", password, "192.0.2.1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString())
+                .andReturn().getResponse().getContentAsString();
+        String token = mapper.readTree(response).get("accessToken").asText();
+        mvc.perform(get("/api/users/me").param("userId", "99").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(42));
+        mvc.perform(put("/api/users/me/region").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"region\":\"서울\",\"userId\":99}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(42))
+                .andExpect(jsonPath("$.region").value("서울"));
+        verify(users, never()).findById(99L);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"abc12345", "Abc1234567890!"})
+    void signupAcceptsEightAndFourteenAsciiCharacters(String password) throws Exception {
+        mvc.perform(request("/api/auth/signup", "user@example.com", password, "192.0.2.1"))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"abc1234", "Abc12345678901!X", "가나다라마바사아", "abcd 123"})
+    void signupRejectsInputsOutsideTheNewPolicy(String password) throws Exception {
+        mvc.perform(request("/api/auth/signup", "user@example.com", password, "192.0.2.1"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(users);
     }
 
     @Test void oldHashStillAuthenticatesAndLongerPasswordSharingItsPrefixDoesNot() throws Exception {
-        User user = new User("legacy@example.com", LEGACY_HASH, "서울");
+        User user = new User("legacy@example.com", LEGACY_HASH);
         org.springframework.test.util.ReflectionTestUtils.setField(user, "id", 42L);
         when(users.findByEmail("legacy@example.com")).thenReturn(Optional.of(user));
         mvc.perform(request("/api/auth/login", "legacy@example.com", "legacy-password-2026", "192.0.2.1"))
