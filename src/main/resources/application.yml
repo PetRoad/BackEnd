@@ -11,8 +11,7 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-  jackson:
-    property-naming-strategy: SNAKE_CASE
+
 server:
   port: ${PORT:8080}
 jwt:
