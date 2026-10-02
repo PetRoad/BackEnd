@@ -3,9 +3,12 @@ spring:
     url: ${DB_URL:jdbc:postgresql://127.0.0.1:5433/petroad}
     username: ${DB_USERNAME:petroad}
     password: ${DB_PASSWORD:petroad}
+    hikari:
+      connection-timeout: 2000
+      validation-timeout: 1000
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
@@ -13,6 +16,8 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   jackson:
     property-naming-strategy: SNAKE_CASE
+  flyway:
+    baseline-on-migrate: false
 server:
   port: ${PORT:8080}
   forward-headers-strategy: none
@@ -29,5 +34,11 @@ security:
     max-tracked-entries: ${LOGIN_MAX_TRACKED_ENTRIES:10000}
     trusted-proxy-addresses: ${LOGIN_TRUSTED_PROXY_ADDRESSES:}
 springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
   swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
     path: /swagger-ui.html
+app:
+  commit: ${APP_COMMIT:local}
+  public-url: ${PUBLIC_API_URL:}

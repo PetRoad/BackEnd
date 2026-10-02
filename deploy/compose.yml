@@ -1,0 +1,67 @@
+name: petroad
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: petroad
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?DB_ADMIN_PASSWORD is required}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d petroad"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 1g
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+  api:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/petroad
+      DB_USERNAME: petroad
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      APP_COMMIT: ${APP_COMMIT:?APP_COMMIT is required}
+      PUBLIC_API_URL: https://petroad-api.hrxlou.com
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      LOGIN_TRUSTED_PROXY_ADDRESSES: 172.30.7.2
+    ports: ["127.0.0.1:18080:8080"]
+    networks:
+      data:
+      edge: {ipv4_address: 172.30.7.3}
+    depends_on: {db: {condition: service_healthy}}
+    mem_limit: 2g
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    user: "65532:65532"
+    command: [tunnel, --no-autoupdate, --config, /etc/cloudflared/config.yml, run]
+    volumes:
+      - /opt/petroad/tunnel.yml:/etc/cloudflared/config.yml:ro
+      - /opt/petroad/secrets/tunnel.json:/run/secrets/tunnel.json:ro
+    networks:
+      edge: {ipv4_address: 172.30.7.2}
+    depends_on: {api: {condition: service_healthy}}
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+volumes:
+  postgres-data:
+networks:
+  data: {internal: true}
+  edge:
+    ipam:
+      config: [{subnet: 172.30.7.0/24}]
