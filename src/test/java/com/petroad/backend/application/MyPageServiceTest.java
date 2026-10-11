@@ -51,7 +51,7 @@ class MyPageServiceTest {
   assertEquals("99",result.id());
  }
  @Test void missingDogIsValidEmptyProfile() {
-  when(users.findById(7L)).thenReturn(Optional.of(new User("a@example.com","hash",null)));
+  when(users.findById(7L)).thenReturn(Optional.of(new User("a@example.com","hash")));
   when(dogs.findByUserId(7L)).thenReturn(Optional.empty());
   when(walks.findAllByUserIdOrderByWalkedAtDesc(7L)).thenReturn(List.of());
   when(courses.findAllByUserIdOrderByIdDesc(7L)).thenReturn(List.of());
