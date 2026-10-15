@@ -43,6 +43,12 @@ class OpenApiSecurityTest {
                 .andExpect(jsonPath("$.servers[0].url").value("https://petroad-api.hrxlou.com"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
                 .andExpect(jsonPath("$.paths['/api/dog'].get.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/api/courses'].post.requestBody.content['application/json'].schema['$ref']")
+                        .value("#/components/schemas/CourseCreateRequest"))
+                .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.points").exists())
+                .andExpect(jsonPath("$.components.schemas.Recommendations.properties.radiusKm").exists())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.dogAge").exists())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.dogSize").doesNotExist())
                 .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         Files.writeString(Path.of("target/openapi-security-verified.json"), json);
     }
