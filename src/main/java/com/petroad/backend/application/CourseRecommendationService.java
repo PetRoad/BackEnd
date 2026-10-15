@@ -37,7 +37,7 @@ public class CourseRecommendationService {
                 || !Double.isFinite(lng) || lng < -180 || lng > 180) {
             throw new IllegalArgumentException("위도는 -90~90, 경도는 -180~180 범위여야 합니다.");
         }
-        List<LocatedCourse> located = courses.findAll().stream()
+        List<LocatedCourse> located = courses.findWithinThreeKilometers(lat, lng).stream()
                 .map(course -> new LocatedCourse(course,
                         distanceMeters(lat, lng, course.getStartLat(), course.getStartLng())))
                 .toList();
@@ -49,22 +49,30 @@ public class CourseRecommendationService {
         Set<Long> ownerIds = selected.stream().map(item -> item.course().getUser().getId()).collect(Collectors.toSet());
         Map<Long, Dog> profiles = ownerIds.isEmpty() ? Map.of() : dogs.findAllByUserIdIn(ownerIds).stream()
                 .collect(Collectors.toMap(dog -> dog.getUser().getId(), Function.identity()));
+        List<Long> courseIds = selected.stream().map(item -> item.course().getId()).toList();
+        Map<Long, List<String>> tagsByCourse = new HashMap<>();
+        if (!courseIds.isEmpty()) {
+            for (CourseRepository.TagValue value : courses.findTagValuesByCourseIdIn(courseIds)) {
+                tagsByCourse.computeIfAbsent(value.getCourseId(), id -> new ArrayList<>()).add(value.getTag());
+            }
+        }
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         return new Recommendations(radius / 1000.0, selected.stream()
-                .map(item -> summary(item.course(), item.meters(), profiles.get(item.course().getUser().getId()), today))
+                .map(item -> summary(item.course(), item.meters(), profiles.get(item.course().getUser().getId()), today,
+                        tagsByCourse.getOrDefault(item.course().getId(), List.of())))
                 .toList());
     }
 
     public CourseSummary summary(Course course) {
         return summary(course, null, dogs.findByUserId(course.getUser().getId()).orElse(null),
-                LocalDate.now(ZoneId.of("Asia/Seoul")));
+                LocalDate.now(ZoneId.of("Asia/Seoul")), course.getTags().stream().map(CourseTag::getTag).toList());
     }
 
-    private CourseSummary summary(Course course, Double meters, Dog dog, LocalDate today) {
+    private CourseSummary summary(Course course, Double meters, Dog dog, LocalDate today, List<String> tags) {
         return new CourseSummary(course.getId(), course.getName(), course.getCoverImageUrl(),
                 course.getDistance(), course.getDifficulty(), course.getLikeCount(),
                 course.getStartLat(), course.getStartLng(), meters == null ? null : meters / 1000.0,
-                course.getTags().stream().map(CourseTag::getTag).toList(),
+                tags.stream().toList(),
                 dog == null ? null : dog.getBreed(), dog == null ? null : age(dog.getBirthDate(), today));
     }
 

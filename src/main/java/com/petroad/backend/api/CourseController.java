@@ -30,7 +30,7 @@ public class CourseController {
 
     public record CourseCreateRequest(@NotBlank String name, String coverImageUrl, @Positive double distance, Difficulty difficulty,
                          DogSize dogSize, @DecimalMin("-90") double startLat, @DecimalMin("-180") double startLng,
-                         @Size(max = 3) List<String> tags, @Size(min = 2) List<Point> points) {
+                         @Size(max = 3) List<String> tags, @NotNull @Size(min = 2) List<Point> points) {
     }
 
     @Operation(summary = "산책 코스 등록")

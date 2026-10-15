@@ -28,7 +28,7 @@ class CourseRecommendationServiceTest {
     }
 
     @Test void thirdNearbyCourseShrinksRadiusAndLikesTakePriorityOverDistance() {
-        when(courses.findAll()).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
+        when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
                 course(3L,0.006,10), course(4L,0.02,999)));
         when(dogs.findAllByUserIdIn(anyCollection())).thenReturn(List.of());
         var result = service.recommended(0,0);
@@ -38,8 +38,8 @@ class CourseRecommendationServiceTest {
     }
 
     @Test void twoNearbyCoursesExpandRadiusAndExcludeBeyondThreeKilometers() {
-        when(courses.findAll()).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
-                course(3L,0.02,30), course(4L,0.04,999)));
+        when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
+                course(3L,0.02,30)));
         when(dogs.findAllByUserIdIn(anyCollection())).thenReturn(List.of());
         var result = service.recommended(0,0);
         assertThat(result.radiusKm()).isEqualTo(3.0);
@@ -47,11 +47,13 @@ class CourseRecommendationServiceTest {
     }
 
     @Test void emptyRecommendationsStillReportExpandedRadius() {
-        when(courses.findAll()).thenReturn(List.of());
+        when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of());
         var result = service.recommended(0,0);
         assertThat(result.radiusKm()).isEqualTo(3.0);
         assertThat(result.courses()).isEmpty();
         verifyNoInteractions(dogs);
+        verify(courses, never()).findAll();
+        verify(courses, never()).findTagValuesByCourseIdIn(anyCollection());
     }
 
     @Test void ageUsesCompletedYearsAndUnknownDatesStayUnknown() {
