@@ -1,0 +1,75 @@
+
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "ko-KR"
+early_access: false
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+
+  high_level_summary: true
+  collapse_walkthrough: true
+  review_status: true
+  poem: false
+  sequence_diagrams: false
+
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!**/target/**"
+    - "!**/generated/**"
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    base_branches:
+      - "develop"
+      - "main"
+
+  path_instructions:
+    - path: "**/*.java"
+      instructions: |
+        PetRoad는 Spring Boot 기반의 반려견 산책 코스 서비스입니다.
+
+        다음 사항을 우선 검토하세요.
+
+        1. NullPointerException 등 실제 발생 가능한 오류
+        2. 사용자 입력값 검증 누락
+        3. JWT 인증과 사용자별 데이터 접근 권한
+        4. 잘못된 예외 처리와 HTTP 상태 코드
+        5. JPA N+1 조회 및 불필요한 DB 쿼리
+        6. 트랜잭션 경계와 데이터 정합성
+        7. 중복 코스 좋아요 등록 및 취소 처리
+        8. GPS 좌표 순서, 거리 계산 및 경로 데이터 검증
+
+        실제 버그, 보안 문제, 데이터 손실 가능성을
+        가장 중요하게 다뤄주세요.
+
+        사소한 스타일이나 취향 차이는 지적을 줄이세요.
+
+        문제가 있다면 발생 조건과 수정 방법을
+        한국어로 구체적으로 설명하세요.
+
+        프로젝트에 존재하지 않는 기능이나
+        새로운 아키텍처 도입을 강요하지 마세요.
+
+    - path: "**/src/main/resources/**/*"
+      instructions: |
+        Spring Boot 설정 파일을 검토하세요.
+
+        DB 비밀번호, JWT Secret, API Key 등의
+        하드코딩 또는 노출 여부를 확인하세요.
+
+        개발 및 운영 환경 설정이 혼동되지 않는지,
+        민감한 값이 로그에 노출되지 않는지 확인하세요.
+
+    - path: "**/src/test/**/*.java"
+      instructions: |
+        테스트가 실제 비즈니스 요구사항을 검증하는지 확인하세요.
+
+        정상 동작뿐 아니라 권한 오류, 중복 요청,
+        잘못된 입력값에 대한 테스트를 확인하세요.
+
+        의미 없는 테스트 추가는 권장하지 마세요.
