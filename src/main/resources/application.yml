@@ -43,3 +43,6 @@ springdoc:
 app:
   commit: ${APP_COMMIT:local}
   public-url: ${PUBLIC_API_URL:}
+  storage:
+    type: ${STORAGE_TYPE:local}
+    local-dir: ${STORAGE_LOCAL_DIR:./uploads}

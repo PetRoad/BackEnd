@@ -5,15 +5,21 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.petroad.backend.storage.ImageStorage;
+import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
 
+
+
 @RestController
 @RequestMapping("/api/uploads")
+@RequiredArgsConstructor
 public class UploadController {
 
+    private final ImageStorage storage;
     public enum Purpose { WALK_PHOTO, COURSE_COVER, DOG_PROFILE }
 
     public record UploadResponse(String url) {}
@@ -29,7 +35,9 @@ public class UploadController {
         if (extension == null) throw new IllegalArgumentException("jpg, png, webp 이미지만 올릴 수 있습니다.");
 
         String name = UUID.randomUUID() + "." + extension;
-        return new UploadResponse("test://" + purpose.name().toLowerCase() + "/" + name);
+        // 기존: return new UploadResponse("test://" + ...);
+        String url = storage.save(purpose.name().toLowerCase(), name, file);
+        return new UploadResponse(url);
     }
 
     // 파일 이름이 아니라 파일 맨 앞 몇 바이트(진짜 이미지인지 알려주는 표식)를 본다
