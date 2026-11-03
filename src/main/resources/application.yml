@@ -6,6 +6,10 @@ spring:
     hikari:
       connection-timeout: 2000
       validation-timeout: 1000
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
   jpa:
     hibernate:
       ddl-auto: validate
