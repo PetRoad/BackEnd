@@ -4,3 +4,4 @@ target/
 .env
 application-local.yml
 .DS_Store
+uploads/

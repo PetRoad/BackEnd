@@ -33,4 +33,8 @@ public class ApiExceptionHandler {
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.getRetryAfterSeconds()))
                 .body(new ApiError(exception.getMessage()));
     }
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiError> typeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exception) {
+        return ResponseEntity.badRequest().body(new ApiError(exception.getName() + " 값이 올바르지 않습니다."));
+    }
 }

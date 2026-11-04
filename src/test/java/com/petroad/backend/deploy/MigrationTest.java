@@ -30,7 +30,7 @@ class MigrationTest {
 
     @Test void freshSchemaValidatesAndMigrationsPreserveDataOrRollbackAtomically() throws Exception {
         assertThat(flyway.info().applied()).extracting(info -> info.getVersion().getVersion())
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
         jdbc.update("INSERT INTO users(email,password,region) VALUES (?,?,?)", "migration-fixture@example.com", "test-fixture-hash", "서울");
         assertThat(flyway.migrate().migrationsExecuted).isZero();
 
@@ -46,7 +46,7 @@ class MigrationTest {
         assertThat(jdbc.queryForObject("SELECT to_regclass('migration_rollback_probe')::text", String.class)).isNull();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users", Integer.class)).isEqualTo(1);
         assertThat(next.info().applied()).extracting(info -> info.getVersion().getVersion())
-                .containsExactly("1", "2", "3");
+                .containsExactly("1", "2", "3", "100");
 
         jdbc.execute("CREATE SCHEMA legacy_fixture");
         try (Connection connection = dataSource.getConnection()) {
@@ -60,7 +60,7 @@ class MigrationTest {
                 .defaultSchema("legacy_fixture").baselineVersion("1").locations("classpath:db/migration").load();
         assertThatThrownBy(legacy::migrate).isInstanceOf(FlywayException.class);
         legacy.baseline();
-        assertThat(legacy.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(legacy.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(legacy.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM legacy_fixture.users", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT distance FROM legacy_fixture.walk_log WHERE id = 100", Double.class))
