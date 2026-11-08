@@ -20,18 +20,18 @@ import io.swagger.v3.oas.annotations.Operation;
 public class AuthController {
     private final UserRepository users;
     private final PasswordEncoder encoder;
-    private final JwtService jwt;
     private final LoginThrottle throttle;
     private final ClientIpResolver clientIp;
+    private final RefreshTokenService refreshTokens;
     private final String dummyPasswordHash;
 
-    public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt,
-                          LoginThrottle throttle, ClientIpResolver clientIp) {
+    public AuthController(UserRepository users, PasswordEncoder encoder,
+                          LoginThrottle throttle, ClientIpResolver clientIp, RefreshTokenService refreshTokens) {
         this.users = users;
         this.encoder = encoder;
-        this.jwt = jwt;
         this.throttle = throttle;
         this.clientIp = clientIp;
+        this.refreshTokens = refreshTokens;
         this.dummyPasswordHash = encoder.encode("not-a-real-account-password");
     }
 
@@ -52,7 +52,8 @@ public class AuthController {
                                 accessMode = Schema.AccessMode.WRITE_ONLY) String password) {
     }
 
-    public record Token(String accessToken, Long userId) {
+    public record RefreshRequest(@NotBlank @Size(max = 512)
+                                 @Schema(accessMode = Schema.AccessMode.WRITE_ONLY) String refreshToken) {
     }
 
     @Operation(summary = "회원가입", description = "이메일과 비밀번호로 가입합니다. 동네·반려견은 가입 후 설정하고, 토큰은 로그인 API에서 발급합니다.")
@@ -82,7 +83,7 @@ public class AuthController {
                     content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class)))
     })
     @PostMapping("/login")
-    public Token login(@Valid @RequestBody Login request, HttpServletRequest servletRequest) {
+    public RefreshTokenService.TokenPair login(@Valid @RequestBody Login request, HttpServletRequest servletRequest) {
         try (LoginThrottle.Attempt attempt = throttle.begin(request.email(), clientIp.resolve(servletRequest))) {
             User user = users.findByEmail(request.email()).orElse(null);
             boolean matches = encoder.matches(request.password(), user == null ? dummyPasswordHash : user.getPassword());
@@ -90,10 +91,38 @@ public class AuthController {
                 attempt.failed();
                 throw new AuthenticationFailedException("이메일 또는 비밀번호가 올바르지 않습니다.");
             }
-            Token token = new Token(jwt.issue(user.getId()), user.getId());
+            RefreshTokenService.TokenPair token = refreshTokens.issue(user);
             attempt.succeeded();
             return token;
         }
+    }
+
+    @Operation(summary = "인증 토큰 재발급", description = "리프레시 토큰을 한 번 사용하면 교체합니다. 사용한 토큰을 재사용하면 해당 로그인 세션을 폐기합니다. 두 토큰을 모두 새 값으로 저장하세요.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "새 액세스·리프레시 토큰 발급",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = RefreshTokenService.TokenPair.class))),
+            @ApiResponse(responseCode = "400", description = "리프레시 토큰 입력값 검증 실패",
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "만료·폐기·재사용 또는 잘못된 리프레시 토큰",
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class)))
+    })
+    @PostMapping("/refresh")
+    public RefreshTokenService.TokenPair refresh(@Valid @RequestBody RefreshRequest request) {
+        return refreshTokens.refresh(request.refreshToken());
+    }
+
+    @Operation(summary = "로그아웃", description = "요청한 리프레시 토큰의 로그인 세션을 폐기합니다. 이미 발급된 액세스 토큰은 만료 시까지 유효합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "로그인 세션 폐기 완료"),
+            @ApiResponse(responseCode = "400", description = "리프레시 토큰 입력값 검증 실패",
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "알 수 없는 리프레시 토큰",
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class)))
+    })
+    @PostMapping("/logout")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void logout(@Valid @RequestBody RefreshRequest request) {
+        refreshTokens.logout(request.refreshToken());
     }
 
     @Operation(summary = "서버상태 확인")

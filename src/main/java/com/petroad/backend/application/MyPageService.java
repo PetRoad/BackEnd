@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,9 +21,11 @@ public class MyPageService {
  private final CourseRepository courses;
  private final CourseLikeRepository likes;
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
- public record DogProfile(String name,String breed,DogSize size,LocalDate birthDate,String profileImage) {}
+ @Schema(name="MyDogProfile")
+ public record DogProfile(String name,@Schema(description="내 반려견의 견종") String breed,DogSize size,LocalDate birthDate,String profileImage) {}
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
- public record Stats(long walkCount,double totalDistanceMeters,long photoCount,long courseCount,long likedCourseCount) {}
+ public record Stats(@Schema(description="내 산책일지 수") long walkCount,double totalDistanceMeters,long photoCount,
+                     @Schema(description="내가 작성·공유한 코스 수. 산책일지 수와 다릅니다.") long courseCount,long likedCourseCount) {}
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
  public record Overview(String region,DogProfile dog,Stats stats) {}
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
@@ -44,6 +47,11 @@ public class MyPageService {
  public WalkDetail walk(Long userId,Long id) {
   return walk(walks.findByIdAndUserId(id,userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"산책 기록을 찾을 수 없습니다.")));
  }
+ @Transactional
+ public void deleteWalk(Long userId,Long id) {
+  WalkLog log=walks.findByIdAndUserId(id,userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"산책 기록을 찾을 수 없습니다."));
+  walks.delete(log);
+ }
  public List<CourseDetail> courses(Long userId,boolean likedOnly) {
   Set<Long> likedIds=new HashSet<>();
   List<Course> liked=likes.findAllByUserIdOrderByIdDesc(userId).stream().map(CourseLike::getCourse).toList();
@@ -63,7 +71,7 @@ public class MyPageService {
  }
  private DogProfile dog(Dog d) {return new DogProfile(d.getName(),d.getBreed(),d.getSize(),d.getBirthDate(),d.getProfileImage());}
  private WalkDetail walk(WalkLog w) {
-  LocalDate date=w.getWalkedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("Asia/Seoul")).toLocalDate();
+  LocalDate date=w.getWalkedAt()==null ? null : w.getWalkedAt().atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.of("Asia/Seoul")).toLocalDate();
   return new WalkDetail(w.getId().toString(),w.getTitle()==null ? "산책 기록" : w.getTitle(),date,w.getDistance()*1000,w.getDurationSec(),List.copyOf(w.getPhotos()),w.getCourse()==null ? null : w.getCourse().getId().toString());
  }
  private CourseDetail course(Course c,Long userId,boolean liked) {

@@ -27,6 +27,8 @@ class OpenApiSecurityTest {
     @MockBean private CourseRepository courses;
     @MockBean private CourseLikeRepository likes;
     @MockBean private WalkLogRepository logs;
+    @MockBean private RefreshTokenRepository refreshTokens;
+    @MockBean private RefreshSessionRepository refreshSessions;
     @MockBean private javax.sql.DataSource dataSource;
 
     @Test void bootBindsDefaultSecuritySettingsAndPublishesPasswordErrorsAndRetryAfter() throws Exception {
@@ -50,8 +52,22 @@ class OpenApiSecurityTest {
                         .value(org.hamcrest.Matchers.hasItem("points")))
                 .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.points.minItems").value(2))
                 .andExpect(jsonPath("$.components.schemas.Recommendations.properties.radiusKm").exists())
-                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.dogAge").exists())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.creatorDogAge").exists())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.creatorDogBreed").exists())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.breed").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.dogAge").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.dogSize").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/me/walks/{id}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.responses['200'].content['application/json'].schema['$ref']")
+                        .value("#/components/schemas/TokenPair"))
+                .andExpect(jsonPath("$.paths['/api/auth/refresh'].post.security").isEmpty())
+                .andExpect(jsonPath("$.paths['/api/auth/logout'].post.responses['204']").exists())
+                .andExpect(jsonPath("$.components.schemas.TokenPair.properties.refreshToken").exists())
+                .andExpect(jsonPath("$.components.schemas.WalkLogResponse.properties.durationSec").exists())
+                .andExpect(jsonPath("$.components.schemas.WalkLogResponse.properties.date").exists())
+                .andExpect(jsonPath("$.components.schemas.MyDogProfileRequest.properties.birthDate").exists())
+                .andExpect(jsonPath("$.components.schemas.DogUpsertRequest.properties.birthDate").exists())
                 .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         Files.writeString(Path.of("target/openapi-security-verified.json"), json);
     }

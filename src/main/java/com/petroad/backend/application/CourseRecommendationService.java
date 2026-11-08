@@ -26,8 +26,8 @@ public class CourseRecommendationService {
                                 @Schema(description = "산책 코스 길이(km)") double distanceKm,
                                 Difficulty difficulty, int likeCount, double startLat, double startLng,
                                 @Schema(description = "요청 위치에서 코스 시작점까지 직선 거리(km). 등록·좋아요 응답에서는 null") Double distanceFromKm,
-                                List<String> tags, String breed,
-                                @Schema(description = "등록자 반려견의 현재 만 나이(서울 날짜 기준). 생년월일이 없으면 null") Integer dogAge) {}
+                                List<String> tags, @Schema(description = "코스 작성자의 반려견 견종. 내 반려견 프로필과 구분합니다.") String creatorDogBreed,
+                                @Schema(description = "등록자 반려견의 현재 만 나이(서울 날짜 기준). 생년월일이 없으면 null") Integer creatorDogAge) {}
 
     public record Recommendations(@Schema(description = "실제로 적용한 추천 반경(km): 1.5 또는 3.0")
                                   double radiusKm, List<CourseSummary> courses) {}

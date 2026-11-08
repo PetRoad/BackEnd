@@ -19,7 +19,8 @@ public class JwtService {
         if (expirationMs <= 0) throw new IllegalArgumentException("JWT 만료 시간은 양수여야 합니다.");
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)); this.expirationMs = expirationMs;
     }
-    public String issue(Long userId) { return Jwts.builder().subject(userId.toString()).issuedAt(new Date())
+    public long expirationSeconds() { return expirationMs / 1000; }
+    public String issue(Long userId) { return Jwts.builder().id(java.util.UUID.randomUUID().toString()).subject(userId.toString()).issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis()+expirationMs)).signWith(key).compact(); }
     public Long parseUserId(String token) { return Long.valueOf(Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject()); }
 }

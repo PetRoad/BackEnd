@@ -39,8 +39,11 @@ class AuthApiTest {
         clock = new MutableClock();
         var properties = LoginThrottleTest.settings(5, 30, 100);
         var jwt = new JwtService(JwtServiceTest.KEY, 60000);
-        var controller = new AuthController(users, encoder, jwt,
-                new LoginThrottle(properties, clock), new ClientIpResolver(properties));
+        var sessions = mock(RefreshSessionRepository.class);
+        when(sessions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var refreshTokens = new RefreshTokenService(sessions, mock(RefreshTokenRepository.class), jwt, clock, Duration.ofDays(30));
+        var controller = new AuthController(users, encoder,
+                new LoginThrottle(properties, clock), new ClientIpResolver(properties), refreshTokens);
         mvc = MockMvcBuilders.standaloneSetup(controller, new UserController(users))
                 .addMappedInterceptors(new String[]{"/api/users/**"}, new JwtInterceptor(jwt)).setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper)).build();
