@@ -6,4 +6,5 @@ public interface CourseLikeRepository extends JpaRepository<CourseLike,Long> {
  boolean existsByUserIdAndCourseId(Long u,Long c);
  void deleteByUserIdAndCourseId(Long u,Long c);
  List<CourseLike> findAllByUserIdOrderByIdDesc(Long userId);
+ void deleteAllByCourseId(Long courseId);
 }
