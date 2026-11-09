@@ -64,15 +64,15 @@ class CourseRecommendationWebTest {
                 .andExpect(jsonPath("$.courses[0].distanceFromMeters").doesNotExist())
                 .andExpect(jsonPath("$.courses[0].distanceFromKm").value(closeTo(0.62339,0.00001), Double.class))
                 .andExpect(jsonPath("$.courses[0].tags",contains("물가","평지")))
-                .andExpect(jsonPath("$.courses[0].breed").value("포메라니안"))
-                .andExpect(jsonPath("$.courses[0].dogAge").value(3))
+                .andExpect(jsonPath("$.courses[0].creatorDogBreed").value("포메라니안"))
+                .andExpect(jsonPath("$.courses[0].creatorDogAge").value(3))
                 .andExpect(jsonPath("$.courses[0].dogSize").doesNotExist())
                 .andExpect(jsonPath("$.courses[0].distance").doesNotExist())
                 .andExpect(jsonPath("$.courses[1].name").value("낙산공원 성곽길"))
                 .andExpect(jsonPath("$.courses[1].distanceKm").value(0.76))
                 .andExpect(jsonPath("$.courses[1].distanceFromKm").value(closeTo(0.42615,0.00001), Double.class))
-                .andExpect(jsonPath("$.courses[1].breed").value("말티즈"))
-                .andExpect(jsonPath("$.courses[1].dogAge").value(2))
+                .andExpect(jsonPath("$.courses[1].creatorDogBreed").value("말티즈"))
+                .andExpect(jsonPath("$.courses[1].creatorDogAge").value(2))
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         Files.writeString(Path.of("target/course-recommendations-mock-verified.json"),json);
     }

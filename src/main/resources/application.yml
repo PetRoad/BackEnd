@@ -24,7 +24,8 @@ server:
   forward-headers-strategy: none
 jwt:
   secret: ${JWT_SECRET:}
-  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  expiration-ms: ${JWT_EXPIRATION_MS:900000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:30d}
 security:
   login:
     max-failures: ${LOGIN_MAX_FAILURES:5}

@@ -3,6 +3,7 @@ package com.petroad.backend.api;
 import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -16,7 +17,9 @@ public class DogController {
     private final DogRepository dogs;
     private final UserRepository users;
 
-    public record DogRequest(@NotBlank String name, String breed, DogSize size, java.time.LocalDate birthDate,
+    @Schema(name = "DogUpsertRequest")
+    public record DogRequest(@NotBlank String name, String breed, DogSize size,
+                             @PastOrPresent(message = "반려견 생일은 오늘 또는 과거 날짜여야 합니다.") java.time.LocalDate birthDate,
                              String profileImage) {
     }
 

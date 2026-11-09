@@ -34,7 +34,7 @@ class CourseRecommendationServiceTest {
         var result = service.recommended(0,0);
         assertThat(result.radiusKm()).isEqualTo(1.5);
         assertThat(result.courses()).extracting(CourseRecommendationService.CourseSummary::id).containsExactly(2L,1L,3L);
-        assertThat(result.courses().get(0).dogAge()).isNull();
+        assertThat(result.courses().get(0).creatorDogAge()).isNull();
     }
 
     @Test void twoNearbyCoursesExpandRadiusAndExcludeBeyondThreeKilometers() {

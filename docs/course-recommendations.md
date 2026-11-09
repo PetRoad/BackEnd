@@ -8,8 +8,8 @@
 ## 응답 변경 (프론트 연동 시 함께 적용)
 
 기존 배열 응답을 `{ radiusKm, courses }` 객체로 바꾼다.
-카드 응답의 `distance`는 단위가 명확한 `distanceKm`로, `dogSize`는 `dogAge`로 바뀐다.
-`breed`, `tags`, `distanceFromKm`도 함께 반환한다. 응답의 거리와 반경은 모두 km이다.
+카드 응답의 `distance`는 `distanceKm`로 바뀌며, 크기 대신 작성자 반려견의 `creatorDogAge`를 반환한다.
+`creatorDogBreed`, `tags`, `distanceFromKm`도 함께 반환한다. 기존 `breed`·`dogAge` 응답명은 `creatorDogBreed`·`creatorDogAge`로 변경했다. 내 반려견 프로필의 `breed`는 유지한다. 응답의 거리와 반경은 모두 km이다.
 
 ```json
 {
@@ -26,8 +26,8 @@
       "startLng": 127.0068,
       "distanceFromKm": 0.623389,
       "tags": ["물가", "평지"],
-      "breed": "포메라니안",
-      "dogAge": 3
+      "creatorDogBreed": "포메라니안",
+      "creatorDogAge": 3
     }
   ]
 }
@@ -47,8 +47,8 @@ PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Jav
 추천 코스가 있는 요청은 코스·반려견·태그 조회 총 3회이며, 결과가 없으면 코스 조회 1회만 실행한다.
 
 견종·나이는 코스 등록자의 현재 반려견 프로필에서 가져온다.
-`dogAge`는 서울 날짜 기준 생일이 지난 횟수(만 나이)이며 1살 미만은 0이다.
-반려견이 없으면 `breed`·`dogAge`는 null, 생년월일이 없거나 미래이면 `dogAge`는 null이다.
+`creatorDogAge`는 서울 날짜 기준 생일이 지난 횟수(만 나이)이며 1살 미만은 0이다.
+반려견이 없으면 `creatorDogBreed`·`creatorDogAge`는 null, 생년월일이 없거나 미래이면 `creatorDogAge`는 null이다.
 
 `POST /api/courses`의 요청 DTO 이름은 `CourseCreateRequest`다.
 `points`는 필수이며 좌표가 최소 2개여야 한다. 누락·null·2개 미만이면 저장 전에 400으로 거절한다.
@@ -72,7 +72,7 @@ PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Jav
 docker exec petroad-postgres psql -U petroad -d postgres -c "CREATE DATABASE petroad_course_mock;"
 ```
 
-백엔드를 실행하면 Flyway V1·V2 적용 후 목업 3개와 각 소유자 반려견 프로필을 생성한다.
+백엔드를 실행하면 Flyway V1~V4 적용 후 목업 3개와 각 소유자 반려견 프로필을 생성한다.
 기존에 같은 목업 이메일이 있으면 다시 생성하거나 사용자 변경을 덮어쓰지 않는다.
 목업 프로파일은 기본으로 비활성화되어 있으며 배포 서버에서 켜지 않는다.
 
