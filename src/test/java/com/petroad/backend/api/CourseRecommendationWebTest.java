@@ -34,9 +34,10 @@ class CourseRecommendationWebTest {
     MockMvc mvc;
 
     @BeforeEach void setup() {
-        var service = new CourseRecommendationService(courses, dogs);
+        var likes = mock(CourseLikeRepository.class);
+        var service = new CourseRecommendationService(courses, dogs, likes);
         mvc = MockMvcBuilders.standaloneSetup(new CourseController(courses, users,
-                        mock(CourseLikeRepository.class), service))
+                        likes, service, mock(com.petroad.backend.application.MyPageService.class)))
                 .setControllerAdvice(new ApiExceptionHandler()).addInterceptors(new JwtInterceptor(jwt)).build();
     }
 

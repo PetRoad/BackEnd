@@ -37,12 +37,8 @@ public class WithdrawalService {
         // 2. 내 산책일지 삭제 (사진 목록 포함)
         walkLogs.deleteAll(walkLogs.findAllByUserIdOrderByWalkedAtDesc(userId));
 
-        // 3. 내가 만든 코스 삭제
-        for (var course : courses.findAllByUserIdOrderByIdDesc(userId)) {
-            likes.deleteAllByCourseId(course.getId());   // 남이 누른 좋아요
-            walkLogs.clearCourse(course.getId());        // 남의 산책일지에서 이 코스 연결 끊기
-            courses.delete(course);                      // 경로·태그는 같이 삭제됨
-        }
+        // DB 외래 키가 받은 좋아요를 삭제하고 다른 사용자의 산책일지를 보존합니다.
+        courses.deleteAll(courses.findAllByUserIdOrderByIdDesc(userId));
 
         // 4. 반려견, 5. 사용자 삭제
         dogs.findByUserId(userId).ifPresent(dogs::delete);

@@ -27,7 +27,8 @@
       "distanceFromKm": 0.623389,
       "tags": ["물가", "평지"],
       "creatorDogBreed": "포메라니안",
-      "creatorDogAge": 3
+      "creatorDogAge": 3,
+      "liked": false
     }
   ]
 }
@@ -44,7 +45,7 @@
 
 PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Java에서 최종 반경과 정렬을 결정한다.
 반환할 코스의 태그는 코스 ID 목록으로 한 번에 조회하고, 반려견 프로필도 소유자 ID 목록으로 일괄 조회한다.
-추천 코스가 있는 요청은 코스·반려견·태그 조회 총 3회이며, 결과가 없으면 코스 조회 1회만 실행한다.
+현재 사용자의 좋아요 여부도 코스 ID 목록으로 일괄 조회한다. 결과가 있으면 인증 사용자 확인을 포함해 SQL 5회, 결과가 없으면 2회 실행한다.
 
 견종·나이는 코스 등록자의 현재 반려견 프로필에서 가져온다.
 `creatorDogAge`는 서울 날짜 기준 생일이 지난 횟수(만 나이)이며 1살 미만은 0이다.
@@ -55,7 +56,11 @@ PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Jav
 등록 요청의 `distance`는 기존과 같이 km이고, `dogSize`도 등록 메타데이터로 유지한다.
 등록·좋아요·좋아요 취소 응답도 새 `CourseSummary`를 사용하며,
 이 요청들은 기준 위치를 받지 않으므로 `distanceFromKm`는 null이다.
-`/api/me` 계열은 이번 변경 대상이 아니다.
+`liked`는 요청 사용자의 좋아요 상태이며 좋아요 등록 응답은 true, 취소 응답은 false다.
+
+로그인한 사용자는 `GET /api/courses/{id}`로 추천 반경과 관계없이 코스 상세를 조회한다. 상세의 `mine`은 본인 코스일 때만 true다. 기존 `/api/me/courses/{id}`는 새 경로로 이동했다. 상세와 `/api/me/courses`, `/api/me/likes`에는 동일한 작성자 반려견 필드가 들어간다.
+
+`DELETE /api/courses/{id}`는 본인 코스를 삭제하면 204, 다른 사용자 코스는 403, 없는 코스는 404를 반환한다. 코스에 달린 좋아요도 제거된다. 산책일지의 코스 연결만 해제하고 GPS 경로·사진·완주율은 보존한다.
 
 ## 로컬 목업 실행
 
@@ -72,7 +77,7 @@ PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Jav
 docker exec petroad-postgres psql -U petroad -d postgres -c "CREATE DATABASE petroad_course_mock;"
 ```
 
-백엔드를 실행하면 Flyway V1~V4 적용 후 목업 3개와 각 소유자 반려견 프로필을 생성한다.
+백엔드를 실행하면 Flyway 마이그레이션 적용 후 목업 3개와 각 소유자 반려견 프로필을 생성한다.
 기존에 같은 목업 이메일이 있으면 다시 생성하거나 사용자 변경을 덮어쓰지 않는다.
 목업 프로파일은 기본으로 비활성화되어 있으며 배포 서버에서 켜지 않는다.
 
@@ -99,4 +104,4 @@ CI의 PostgreSQL 연결 변수 `PETROAD_DB_TEST_URL`이 있으면 전체 `mvn ve
 목업은 `course_api_test` 스키마에만 생성하며, 기존 마이그레이션 테스트의 public 스키마와 분리한다.
 API 검증 결과는 `target/course-recommendations-verified.json`에 저장된다.
 근처 10개·반경 밖 100개 조건에서 코스 10개만 로딩되는지 검증하고,
-3개·10개 반환 모두 SQL 3회와 컬렉션 추가 조회 0회를 검증한다.
+3개·10개 반환 모두 SQL 5회와 컬렉션 추가 조회 0회를 검증한다.
