@@ -49,7 +49,7 @@ class CourseRecommendationApiTest {
 
     @Test
     @Transactional
-    void outsideCoursesAreNotLoadedAndTenCardsUseThreeQueries() throws Exception {
+    void outsideCoursesAreNotLoadedAndTenCardsUseFiveQueries() throws Exception {
         verifyRecommendationQueryCost(10,100);
     }
 
@@ -89,9 +89,9 @@ class CourseRecommendationApiTest {
         org.assertj.core.api.Assertions.assertThat(statistics.getEntityStatistics(
                 "com.petroad.backend.domain.CourseTag").getLoadCount()).isZero();
         org.assertj.core.api.Assertions.assertThat(statistics.getCollectionFetchCount()).isZero();
-        // One query each for nearby courses, owner dog profiles, and all selected tags,
+        // One query each for nearby courses, owner dog profiles, selected tags and user likes,
         // plus one existsById check from ActiveUserInterceptor.
-        org.assertj.core.api.Assertions.assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
+        org.assertj.core.api.Assertions.assertThat(statistics.getPrepareStatementCount()).isEqualTo(5);
         Files.writeString(Path.of("target/course-query-cost-" + nearbyCount + ".txt"),
                 "nearby=" + nearbyCount + ", outside=" + distantCount + ", loadedCourses="
                         + statistics.getEntityStatistics("com.petroad.backend.domain.Course").getLoadCount()

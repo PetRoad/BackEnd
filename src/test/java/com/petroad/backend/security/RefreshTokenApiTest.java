@@ -146,9 +146,9 @@ class RefreshTokenApiTest {
     @Test void walkRegistrationReturnsDateAndDurationAndOnlyOwnerCanDelete() throws Exception {
         JsonNode owner = login(), other = login();
         String auth = "Bearer " + owner.get("accessToken").asText();
-        String response = mvc.perform(post("/api/walk-logs").header("Authorization", auth)
+        String response = mvc.perform(post("/api/me/walks").header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"distance\":2.4,\"durationSec\":1800,\"title\":\"저녁 산책\",\"photos\":[\"https://example.com/walk.jpg\"]}"))
+                        .content("{\"distanceMeters\":2400,\"durationSec\":1800,\"title\":\"저녁 산책\",\"photos\":[\"https://example.com/walk.jpg\"]}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.durationSec").value(1800))
                 .andExpect(jsonPath("$.date").isString()).andExpect(jsonPath("$.photos[0]").value("https://example.com/walk.jpg"))
                 .andReturn().getResponse().getContentAsString();
@@ -191,18 +191,18 @@ class RefreshTokenApiTest {
         String auth = "Bearer " + owner.get("accessToken").asText();
         long id = jdbc.queryForObject("insert into feedback_api_test.walk_log(user_id,distance,walked_at) "
                 + "values (?,1.2,timestamp '2026-11-04 16:00:00') returning id", Long.class, userId);
-        mvc.perform(get("/api/walk-logs").header("Authorization", auth))
+        mvc.perform(get("/api/me/walks").header("Authorization", auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].date").value("2026-11-05"))
-                .andExpect(jsonPath("$[0].distance").value(1.2))
+                .andExpect(jsonPath("$[0].distanceMeters").value(1200))
                 .andExpect(jsonPath("$[0].durationSec").value(org.hamcrest.Matchers.nullValue()));
         mvc.perform(get("/api/me/walks/" + id).header("Authorization", auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.date").value("2026-11-05"))
                 .andExpect(jsonPath("$.durationSec").value(org.hamcrest.Matchers.nullValue()));
-        mvc.perform(post("/api/walk-logs").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"distance\":1.2,\"durationSec\":-1}"))
+        mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"distanceMeters\":1200,\"durationSec\":-1}"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/walk-logs").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"distance\":1.2}"))
+        mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"distanceMeters\":1200}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.durationSec").value(org.hamcrest.Matchers.nullValue()));
     }
 
@@ -213,9 +213,9 @@ class RefreshTokenApiTest {
         long courseId = jdbc.queryForObject("insert into feedback_api_test.course(user_id,name,distance,start_lat,start_lng,like_count) "
                 + "values (?,'공유 코스',1.2,37.58,127.01,1) returning id", Long.class, userId);
         jdbc.update("insert into feedback_api_test.course_likes(user_id,course_id) values (?,?)", userId, courseId);
-        JsonNode walk = mapper.readTree(mvc.perform(post("/api/walk-logs").header("Authorization", auth)
+        JsonNode walk = mapper.readTree(mvc.perform(post("/api/me/walks").header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"distance\":1.2,\"courseId\":" + courseId + ",\"durationSec\":300}"))
+                        .content("{\"distanceMeters\":1200,\"courseId\":" + courseId + ",\"durationSec\":300}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         mvc.perform(delete("/api/me/walks/" + walk.get("id").asLong()).header("Authorization", auth))
                 .andExpect(status().isNoContent());
@@ -230,9 +230,114 @@ class RefreshTokenApiTest {
         String auth = "Bearer " + owner.get("accessToken").asText();
         long id = jdbc.queryForObject("insert into feedback_api_test.walk_log(user_id,distance) values (?,1.2) returning id",
                 Long.class, owner.get("userId").asLong());
-        mvc.perform(get("/api/walk-logs").header("Authorization", auth))
+        mvc.perform(get("/api/me/walks").header("Authorization", auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].date").value(org.hamcrest.Matchers.nullValue()));
         mvc.perform(get("/api/me/walks/" + id).header("Authorization", auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.date").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test void courseDetailLikesAndDeletionPreserveTheFollowersWalk() throws Exception {
+        String owner = "Bearer " + login().get("accessToken").asText();
+        String walker = "Bearer " + login().get("accessToken").asText();
+        mvc.perform(put("/api/me/dog").header("Authorization", owner).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"몽이","breed":"말티즈","size":"SMALL","birthDate":"2024-03-15"}
+                                """))
+                .andExpect(status().isOk());
+        JsonNode course = mapper.readTree(mvc.perform(post("/api/courses").header("Authorization", owner)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"공유 코스","distance":0.43,"difficulty":"HARD","dogSize":"SMALL",
+                                 "startLat":0,"startLng":0,"tags":["공원"],"points":[{"lat":0,"lng":0},{"lat":0.002,"lng":0}]}
+                                """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.liked").value(false))
+                .andReturn().getResponse().getContentAsString());
+        String courseId = course.get("id").asText();
+        String coursePath = "/api/courses/" + courseId;
+        mvc.perform(get("/api/courses").param("lat","37.58").param("lng","127.01").header("Authorization", walker))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.courses[*].id",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(course.get("id").asInt()))));
+        mvc.perform(get(coursePath).header("Authorization", walker))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(courseId))
+                .andExpect(jsonPath("$.mine").value(false)).andExpect(jsonPath("$.distanceMeters").value(430))
+                .andExpect(jsonPath("$.creatorDogBreed").value("말티즈"))
+                .andExpect(jsonPath("$.creatorDogAge").value(course.get("creatorDogAge").asInt()))
+                .andExpect(jsonPath("$.points[1].lat").value(0.002));
+        mvc.perform(get(coursePath).header("Authorization", owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.mine").value(true));
+        mvc.perform(get("/api/me/courses").header("Authorization", owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].creatorDogBreed").value("말티즈"));
+        mvc.perform(delete(coursePath).header("Authorization", walker)).andExpect(status().isForbidden());
+
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(post(coursePath + "/like").header("Authorization", walker))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.liked").value(true))
+                    .andExpect(jsonPath("$.likeCount").value(1));
+        }
+        mvc.perform(get("/api/courses").param("lat","0").param("lng","0").header("Authorization", walker))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.courses[0].liked").value(true));
+        mvc.perform(get("/api/courses").param("lat","0").param("lng","0").header("Authorization", owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.courses[0].liked").value(false));
+        mvc.perform(delete(coursePath + "/like").header("Authorization", walker))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.liked").value(false))
+                .andExpect(jsonPath("$.likeCount").value(0));
+        mvc.perform(post(coursePath + "/like").header("Authorization", walker)).andExpect(status().isOk());
+
+        String cover = "https://example.com/b.jpg";
+        String walkJson = mvc.perform(post("/api/me/walks").header("Authorization", walker)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"성북천 산책","courseId":"%s","distanceMeters":3200,"durationSec":2880,
+                                 "photos":["https://example.com/a.jpg","%s"],"cover":"%s","completion":85,
+                                 "route":[{"lat":37.5893,"lng":127.0191},{"lat":37.5891,"lng":127.0187},{"lat":37.5893,"lng":127.0191}]}
+                                """.formatted(courseId, cover, cover)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").isString())
+                .andExpect(jsonPath("$.courseId").value(courseId)).andExpect(jsonPath("$.distanceMeters").value(3200))
+                .andExpect(jsonPath("$.completion").value(85)).andExpect(jsonPath("$.cover").value(cover))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode saved = mapper.readTree(walkJson);
+        String walkPath = "/api/me/walks/" + saved.get("id").asText();
+        String detail = mvc.perform(get(walkPath).header("Authorization", walker))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(detail)).isEqualTo(saved);
+        String list = mvc.perform(get("/api/me/walks").header("Authorization", walker))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(list).get(0)).isEqualTo(saved);
+
+        mvc.perform(delete(coursePath).header("Authorization", owner)).andExpect(status().isNoContent());
+        mvc.perform(delete(coursePath).header("Authorization", owner)).andExpect(status().isNotFound());
+        mvc.perform(get(coursePath).header("Authorization", walker)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/me/likes").header("Authorization", walker))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+        String retained = mvc.perform(get(walkPath).header("Authorization", walker))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) saved).putNull("courseId");
+        assertThat(mapper.readTree(retained)).isEqualTo(saved);
+    }
+
+    @Test void invalidWalkFieldsAreRejectedAndEmptyRoutesAreAccepted() throws Exception {
+        String auth = "Bearer " + login().get("accessToken").asText();
+        for (String body : List.of(
+                "{}",
+                "{\"distanceMeters\":-1}",
+                "{\"distanceMeters\":1,\"route\":[null]}",
+                "{\"distanceMeters\":1,\"route\":[{\"lat\":91,\"lng\":0}]}",
+                "{\"distanceMeters\":1,\"route\":[{\"lng\":0}]}",
+                "{\"distanceMeters\":1,\"route\":[{\"lat\":0,\"lng\":181}]}",
+                "{\"distanceMeters\":1,\"completion\":0}",
+                "{\"distanceMeters\":1,\"courseId\":\"999\",\"completion\":101}",
+                "{\"distanceMeters\":1,\"courseId\":\"999\",\"completion\":85.5}",
+                "{\"distanceMeters\":1,\"cover\":\"https://example.com/not-in-photos.jpg\"}")) {
+            mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"distanceMeters\":1,\"courseId\":\"9223372036854775807\"}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"distanceMeters\":0,\"route\":[]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.route").isEmpty())
+                .andExpect(jsonPath("$.completion").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.cover").value(org.hamcrest.Matchers.nullValue()));
     }
 }

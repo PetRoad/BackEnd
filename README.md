@@ -128,9 +128,9 @@ Cloudflare Tunnel을 연결할 때는 백엔드에 직접 접근하는 경로를
 |---|---|
 | 인증 | `POST /api/auth/signup`, `POST /api/auth/login` |
 | 반려견 | `GET/PUT /api/dog` |
-| 코스 | `POST /api/courses`, `GET /api/courses?lat=&lng=` |
+| 코스 | `POST /api/courses`, `GET /api/courses?lat=&lng=`, `GET/DELETE /api/courses/{id}` |
 | 좋아요 | `POST/DELETE /api/courses/{id}/like` |
-| 산책일지 | `POST/GET /api/walk-logs` |
+| 산책일지 | `POST/GET /api/me/walks`, `GET/DELETE /api/me/walks/{id}` |
 
 로그인이 필요한 API는 `Authorization: Bearer {accessToken}` 헤더를 사용합니다. 추천 코스는 명세대로 시작점 기준 반경 3km 안에서 좋아요 수 내림차순, 같은 경우 거리 오름차순으로 정렬합니다. 거리는 PostgreSQL의 삼각함수 기반 Haversine 계산으로 조회합니다.
 

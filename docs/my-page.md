@@ -8,11 +8,12 @@
 | GET | `/api/me/stats` | 산책 수·총거리·사진 수·작성 코스 수·좋아요한 코스 수 |
 | PUT | `/api/me/dog` | 내 반려견 프로필 등록·수정 |
 | GET | `/api/me/walks` | 내 산책일지, 최신순, 사진 포함 |
-| GET | `/api/me/walks/{id}` | 내 산책일지 상세; 다른 사용자의 기록은 404 |
-| DELETE | `/api/me/walks/{id}` | 본인 산책일지 삭제; 성공 204, 다른 사용자·없는 기록은 404 |
+| POST | `/api/me/walks` | 산책일지 저장, 상세와 같은 응답 |
+| GET | `/api/me/walks/{id}` | 내 산책일지 상세. 다른 사용자의 기록은 404 |
+| DELETE | `/api/me/walks/{id}` | 본인 산책일지 삭제. 성공 204, 다른 사용자·없는 기록은 404 |
 | GET | `/api/me/courses` | 내가 작성·공유한 코스, 최신순 |
 | GET | `/api/me/likes` | 좋아요한 코스, 좋아요 ID 최신순 |
-| GET | `/api/me/courses/{id}` | 공개 코스 상세 |
+| GET | `/api/courses/{id}` | 로그인 사용자가 조회할 수 있는 코스 상세 |
 
 ## 내 반려견과 코스 작성자의 반려견
 
@@ -34,7 +35,7 @@
 
 ## 산책일지와 코스 응답 구분
 
-`/api/me/walks`·`/api/me/walks/{id}`는 `WalkDetail`을 반환합니다.
+`POST /api/me/walks`, 산책 목록의 각 항목과 산책 상세는 같은 `WalkDetail` 형식을 사용합니다.
 
 ```json
 {
@@ -44,42 +45,49 @@
   "distanceMeters": 2400,
   "durationSec": 1800,
   "photos": ["https://example.com/walk.jpg"],
-  "courseId": null
+  "courseId": "12",
+  "route": [{"lat": 37.5891, "lng": 127.0187}],
+  "completion": 85,
+  "cover": "https://example.com/walk.jpg"
 }
 ```
 
-`/api/me/courses`·`/api/me/likes`·`/api/me/courses/{id}`는 별도의 `CourseDetail`을 반환합니다. `name`, `cover`, `likes`, `distanceMeters`, `difficulty`, `tags`, `points`, `mine`, `liked`를 가지며 산책일지의 `date`, `durationSec`, `photos`와 구분됩니다.
+`/api/me/courses`, `/api/me/likes`, `/api/courses/{id}`는 `CourseDetail`을 반환합니다. `name`, `cover`, `likes`, `distanceMeters`, `difficulty`, `tags`, `points`, `mine`, `liked`, `creatorDogBreed`, `creatorDogAge`가 포함됩니다.
 
 `mine`은 현재 사용자가 작성자인지, `liked`는 현재 사용자가 좋아요했는지 나타내는 boolean입니다. `likes`는 좋아요 개수이며 추천 코스의 같은 개념 필드는 현재 `likeCount`입니다.
 
-목록이 비어 있으면 `[]`, 없는 상세 또는 다른 사용자의 산책일지는 404입니다. `courseId: null`은 코스 없이 자유 산책한 기록입니다. `durationSec: null`은 소요 시간이 입력되지 않았다는 의미이며 0초와 구분합니다.
+목록이 비어 있으면 `[]`, 없는 상세 또는 다른 사용자의 산책일지는 404입니다. `courseId: null`은 자유 산책이거나 연결된 코스가 삭제된 기록입니다. `durationSec: null`은 소요 시간이 입력되지 않았다는 의미이며 0초와 구분합니다.
 
 ## 산책 저장 요청과 응답
 
-`POST /api/walk-logs` 요청:
+`POST /api/me/walks`에 다음 형식으로 요청합니다. 기존 `/api/walk-logs`의 등록·조회 경로는 제거했습니다.
 
 ```json
 {
-  "courseId": null,
-  "distance": 2.4,
-  "title": "저녁 산책",
-  "durationSec": 1800,
-  "photos": ["https://example.com/walk.jpg"]
+  "title": "성북천 산책",
+  "courseId": "12",
+  "distanceMeters": 3200,
+  "durationSec": 2880,
+  "photos": ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+  "cover": "https://example.com/b.jpg",
+  "completion": 85,
+  "route": [
+    {"lat": 37.5891, "lng": 127.0187},
+    {"lat": 37.5893, "lng": 127.0191}
+  ]
 }
 ```
 
-`durationSec`는 **실제 산책 시간(초)**입니다. 1800은 30분입니다. 현재는 선택 입력이며 입력한다면 0 이상이어야 합니다. 신규 저장 시 필수화하려면 요청에 `@NotNull`을 추가하고 모든 클라이언트가 측정 시간을 보내도록 먼저 맞춰야 합니다. 과거 기록의 시간을 임의로 0으로 채우지는 않습니다.
+- `distanceMeters`는 필수이며 단위는 미터입니다. 산책 ID와 코스 ID는 응답에서 문자열로 반환합니다.
+- `durationSec`는 실제 산책 시간(초)입니다. 선택 입력이며 0 이상이어야 합니다.
+- `route`는 저장·조회 시 입력 순서를 유지합니다. 빈 배열이나 미입력을 허용합니다.
+- `completion`은 코스 산책의 완주율이며 0~100 정수 또는 null입니다. 자유 산책이면 null입니다.
+- `cover`는 `photos`에 포함된 URL 또는 null입니다.
+- 없는 코스 ID는 404입니다. 필드 검증 실패는 400입니다.
+- `date`는 서버 저장 시각을 한국 기준 `YYYY-MM-DD`로 변환한 값입니다. 저장 시각이 없는 과거 기록에서는 null입니다.
 
-등록 및 `GET /api/walk-logs` 목록 응답은 `WalkLogResponse`입니다. 기존 `id`, `courseId`, `distance`, `walkedAt`에 `date`, `title`, `durationSec`, `photos`를 추가했습니다. 기존 필드의 단위와 형식은 유지합니다.
-
-- `walkedAt`: UTC 기준 저장 시각
-- `date`: 같은 시각을 서울 날짜로 변환한 `YYYY-MM-DD`
-- `distance`: km; `/api/me/walks`의 `distanceMeters`는 m
-- `durationSec`: 초; 미입력·기존 기록은 null
-
-프론트는 생성 응답만으로 날짜와 소요 시간을 표시할 수 있습니다. 날짜는 현재 저장 시각에서 계산하며 사용자가 과거 산책 날짜를 지정하는 기능은 없습니다.
-이전 데이터에 저장 시각 자체가 없으면 `date`는 null입니다. 신규 저장은 서버가 저장 시각을 기록합니다.
+이전 산책일지는 새 GPS 경로가 `[]`, 대표 사진과 완주율은 null로 조회됩니다. 코스를 삭제해도 기존 산책 경로와 완주율은 유지되며 `courseId`는 null이 됩니다.
 
 삭제는 API만 구현했습니다. `DELETE /api/me/walks/{id}`는 기록과 사진 URL 연결을 삭제하고 공유 코스·좋아요·업로드된 이미지 파일은 유지합니다. 삭제 버튼과 화면 이동은 별도 협의 대상입니다.
 
-DB 변경은 Flyway V1~V4가 적용하며 `ddl-auto: validate`를 유지합니다. 수동 SQL을 중복 적용하지 않습니다. 프론트는 저장·삭제 후 관련 목록과 통계 캐시를 갱신해야 합니다.
+Flyway V5가 GPS 경로와 대표 사진, 완주율을 저장할 스키마를 추가합니다. 저장·삭제 후에는 관련 목록과 통계 캐시를 갱신합니다.

@@ -1,14 +1,21 @@
 package com.petroad.backend.repository;
 
 import com.petroad.backend.domain.Course;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface CourseRepository extends JpaRepository<Course, Long> {
     List<Course> findAllByUserIdOrderByIdDesc(Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Course c where c.id = :id")
+    Optional<Course> lockById(@Param("id") Long id);
 
     @Query(value = """
             SELECT c.* FROM {h-schema}course c

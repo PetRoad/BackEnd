@@ -1,6 +1,7 @@
 package com.petroad.backend.application;
 
 import com.petroad.backend.domain.*;
+import com.petroad.backend.repository.CourseLikeRepository;
 import com.petroad.backend.repository.CourseRepository;
 import com.petroad.backend.repository.DogRepository;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,18 +22,20 @@ import java.util.stream.Collectors;
 public class CourseRecommendationService {
     private final CourseRepository courses;
     private final DogRepository dogs;
+    private final CourseLikeRepository likes;
 
     public record CourseSummary(Long id, String name, String coverImageUrl,
                                 @Schema(description = "산책 코스 길이(km)") double distanceKm,
                                 Difficulty difficulty, int likeCount, double startLat, double startLng,
                                 @Schema(description = "요청 위치에서 코스 시작점까지 직선 거리(km). 등록·좋아요 응답에서는 null") Double distanceFromKm,
                                 List<String> tags, @Schema(description = "코스 작성자의 반려견 견종. 내 반려견 프로필과 구분합니다.") String creatorDogBreed,
-                                @Schema(description = "등록자 반려견의 현재 만 나이(서울 날짜 기준). 생년월일이 없으면 null") Integer creatorDogAge) {}
+                                @Schema(description = "등록자 반려견의 현재 만 나이(서울 날짜 기준). 생년월일이 없으면 null") Integer creatorDogAge,
+                                @Schema(description = "요청한 사용자가 좋아요를 눌렀는지 여부") boolean liked) {}
 
     public record Recommendations(@Schema(description = "실제로 적용한 추천 반경(km): 1.5 또는 3.0")
                                   double radiusKm, List<CourseSummary> courses) {}
 
-    public Recommendations recommended(double lat, double lng) {
+    public Recommendations recommended(Long userId, double lat, double lng) {
         if (!Double.isFinite(lat) || lat < -90 || lat > 90
                 || !Double.isFinite(lng) || lng < -180 || lng > 180) {
             throw new IllegalArgumentException("위도는 -90~90, 경도는 -180~180 범위여야 합니다.");
@@ -50,6 +53,7 @@ public class CourseRecommendationService {
         Map<Long, Dog> profiles = ownerIds.isEmpty() ? Map.of() : dogs.findAllByUserIdIn(ownerIds).stream()
                 .collect(Collectors.toMap(dog -> dog.getUser().getId(), Function.identity()));
         List<Long> courseIds = selected.stream().map(item -> item.course().getId()).toList();
+        Set<Long> likedIds = courseIds.isEmpty() ? Set.of() : likes.findLikedCourseIds(userId, courseIds);
         Map<Long, List<String>> tagsByCourse = new HashMap<>();
         if (!courseIds.isEmpty()) {
             for (CourseRepository.TagValue value : courses.findTagValuesByCourseIdIn(courseIds)) {
@@ -59,21 +63,21 @@ public class CourseRecommendationService {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         return new Recommendations(radius / 1000.0, selected.stream()
                 .map(item -> summary(item.course(), item.meters(), profiles.get(item.course().getUser().getId()), today,
-                        tagsByCourse.getOrDefault(item.course().getId(), List.of())))
+                        tagsByCourse.getOrDefault(item.course().getId(), List.of()), likedIds.contains(item.course().getId())))
                 .toList());
     }
 
-    public CourseSummary summary(Course course) {
+    public CourseSummary summary(Course course, boolean liked) {
         return summary(course, null, dogs.findByUserId(course.getUser().getId()).orElse(null),
-                LocalDate.now(ZoneId.of("Asia/Seoul")), course.getTags().stream().map(CourseTag::getTag).toList());
+                LocalDate.now(ZoneId.of("Asia/Seoul")), course.getTags().stream().map(CourseTag::getTag).toList(), liked);
     }
 
-    private CourseSummary summary(Course course, Double meters, Dog dog, LocalDate today, List<String> tags) {
+    private CourseSummary summary(Course course, Double meters, Dog dog, LocalDate today, List<String> tags, boolean liked) {
         return new CourseSummary(course.getId(), course.getName(), course.getCoverImageUrl(),
                 course.getDistance(), course.getDifficulty(), course.getLikeCount(),
                 course.getStartLat(), course.getStartLng(), meters == null ? null : meters / 1000.0,
                 tags.stream().toList(),
-                dog == null ? null : dog.getBreed(), dog == null ? null : age(dog.getBirthDate(), today));
+                dog == null ? null : dog.getBreed(), dog == null ? null : age(dog.getBirthDate(), today), liked);
     }
 
     static Integer age(LocalDate birthDate, LocalDate today) {

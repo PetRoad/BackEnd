@@ -18,6 +18,7 @@ import static org.mockito.Mockito.*;
 class CourseRecommendationServiceTest {
     @Mock CourseRepository courses;
     @Mock DogRepository dogs;
+    @Mock CourseLikeRepository likes;
     @InjectMocks CourseRecommendationService service;
 
     @Test void haversineMatchesSeoulBusanAndHandlesCoincidentAndAntipodalPoints() {
@@ -31,7 +32,7 @@ class CourseRecommendationServiceTest {
         when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
                 course(3L,0.006,10), course(4L,0.02,999)));
         when(dogs.findAllByUserIdIn(anyCollection())).thenReturn(List.of());
-        var result = service.recommended(0,0);
+        var result = service.recommended(7L,0,0);
         assertThat(result.radiusKm()).isEqualTo(1.5);
         assertThat(result.courses()).extracting(CourseRecommendationService.CourseSummary::id).containsExactly(2L,1L,3L);
         assertThat(result.courses().get(0).creatorDogAge()).isNull();
@@ -41,17 +42,17 @@ class CourseRecommendationServiceTest {
         when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of(course(1L,0.002,10), course(2L,0.004,20),
                 course(3L,0.02,30)));
         when(dogs.findAllByUserIdIn(anyCollection())).thenReturn(List.of());
-        var result = service.recommended(0,0);
+        var result = service.recommended(7L,0,0);
         assertThat(result.radiusKm()).isEqualTo(3.0);
         assertThat(result.courses()).extracting(CourseRecommendationService.CourseSummary::id).containsExactly(3L,2L,1L);
     }
 
     @Test void emptyRecommendationsStillReportExpandedRadius() {
         when(courses.findWithinThreeKilometers(0,0)).thenReturn(List.of());
-        var result = service.recommended(0,0);
+        var result = service.recommended(7L,0,0);
         assertThat(result.radiusKm()).isEqualTo(3.0);
         assertThat(result.courses()).isEmpty();
-        verifyNoInteractions(dogs);
+        verifyNoInteractions(dogs, likes);
         verify(courses, never()).findAll();
         verify(courses, never()).findTagValuesByCourseIdIn(anyCollection());
     }
@@ -66,10 +67,10 @@ class CourseRecommendationServiceTest {
     }
 
     @Test void invalidCoordinatesAreRejectedBeforeQuerying() {
-        assertThatThrownBy(() -> service.recommended(91,0)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.recommended(0,-181)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.recommended(Double.NaN,0)).isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(courses, dogs);
+        assertThatThrownBy(() -> service.recommended(7L,91,0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.recommended(7L,0,-181)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.recommended(7L,Double.NaN,0)).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(courses, dogs, likes);
     }
 
     private Course course(Long id, double latitude, int likes) {
