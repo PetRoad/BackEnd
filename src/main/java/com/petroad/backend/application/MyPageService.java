@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
+import com.petroad.backend.storage.ImageStorage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -25,6 +26,7 @@ public class MyPageService {
  private final WalkLogRepository walks;
  private final CourseRepository courses;
  private final CourseLikeRepository likes;
+ private final ImageStorage images;
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
  @Schema(name="MyDogProfile")
  public record DogProfile(String name,@Schema(description="내 반려견의 견종") String breed,DogSize size,LocalDate birthDate,String profileImage) {}
@@ -63,6 +65,8 @@ public class MyPageService {
   if (!Double.isFinite(distanceMeters)) {
    throw new IllegalArgumentException("distanceMeters는 유한한 거리여야 합니다.");
   }
+  if (photos != null) photos.forEach(photo -> requireImageUrl(photo, "photos"));
+  if (cover != null) requireImageUrl(cover, "cover");
   if (cover != null && (photos == null || !photos.contains(cover))) {
    throw new IllegalArgumentException("cover는 photos에 포함된 URL이어야 합니다.");
   }
@@ -104,9 +108,15 @@ public class MyPageService {
  }
  @Transactional
  public DogProfile saveDog(Long userId,String name,String breed,DogSize size,LocalDate birthDate,String profileImage) {
+  if (profileImage != null) requireImageUrl(profileImage, "profileImage");
   User user=users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,"로그인이 필요합니다."));
   Dog d=dogs.findByUserId(userId).orElseGet(() -> new Dog(user,name,breed,size,birthDate,profileImage));
   d.update(name,breed,size,birthDate,profileImage);return dog(dogs.save(d));
+ }
+ private void requireImageUrl(String url, String field) {
+  if (url == null || !images.isOwnUrl(url)) {
+   throw new IllegalArgumentException(field + "는 이미지 업로드 API에서 발급한 주소여야 합니다.");
+  }
  }
  private DogProfile dog(Dog d) {return new DogProfile(d.getName(),d.getBreed(),d.getSize(),d.getBirthDate(),d.getProfileImage());}
  private WalkDetail walk(WalkLog w) {

@@ -36,7 +36,7 @@ public class AuthController {
     }
 
     public record Signup(
-            @Email @NotBlank String email,
+            @Email @NotBlank @Size(max = 255) String email,
             @NotBlank
             @Pattern(regexp = "^[\\x21-\\x7E]{8,14}$", message = "비밀번호는 영문, 숫자, 특수문자만 사용하여 공백 없이 8자 이상 14자 이하로 입력해주세요.")
             @Schema(description = "공백 없는 영문·숫자·특수문자 8~14자", minLength = 8, maxLength = 14,
@@ -47,7 +47,7 @@ public class AuthController {
     public record SignupResponse(Long userId, String email) {
     }
 
-    public record Login(@Email @NotBlank String email, @NotBlank @MaxPasswordBytes
+    public record Login(@Email @NotBlank @Size(max = 255) String email, @NotBlank @MaxPasswordBytes
                         @Schema(description = "UTF-8 기준 최대 72바이트. 초과 입력은 400으로 거부합니다.",
                                 accessMode = Schema.AccessMode.WRITE_ONLY) String password) {
     }
@@ -125,9 +125,4 @@ public class AuthController {
         refreshTokens.logout(request.refreshToken());
     }
 
-    @Operation(summary = "서버상태 확인")
-    @GetMapping("/health")
-    public java.util.Map<String, String> health() {
-        return java.util.Map.of("status", "ok");
-    }
 }

@@ -65,6 +65,16 @@ class AuthApiTest {
     static Stream<String> overlongPasswords() { return Stream.of("a".repeat(73), "가".repeat(24) + "a", "😀".repeat(19)); }
     static Stream<String> boundaryPasswords() { return Stream.of("a".repeat(72), "가".repeat(24), "😀".repeat(18)); }
 
+    @Test void overlongEmailsAreRejectedBeforeDatabaseAccess() throws Exception {
+        String email = "a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(63) + ".com";
+        for (String path : new String[]{"/api/auth/signup", "/api/auth/login"}) {
+            mvc.perform(request(path, email, "Password123!", "192.0.2.1"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("email")));
+        }
+        verifyNoInteractions(users);
+    }
+
     @ParameterizedTest @MethodSource("overlongPasswords")
     void signupAndLoginRejectOverlongUtf8BeforeTouchingDatabase(String password) throws Exception {
         for (String path : new String[]{"/api/auth/signup", "/api/auth/login"}) {
@@ -102,8 +112,8 @@ class AuthApiTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString())
                 .andReturn().getResponse().getContentAsString();
         String token = mapper.readTree(response).get("accessToken").asText();
-        mvc.perform(get("/api/users/me").param("userId", "99").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(42));
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
         mvc.perform(put("/api/users/me/region").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"region\":\"서울\",\"userId\":99}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(42))

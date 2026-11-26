@@ -2,6 +2,7 @@ package com.petroad.backend.application;
 
 import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
+import com.petroad.backend.storage.ImageStorage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,10 +21,11 @@ class MyPageServiceTest {
  @Mock WalkLogRepository walks;
  @Mock CourseRepository courses;
  @Mock CourseLikeRepository likes;
+ @Mock ImageStorage images;
  @InjectMocks MyPageService service;
 
  @Test void aggregatesOnlyAuthenticatedUsersRecordsAndConvertsKilometers() {
-  WalkLog first=new WalkLog(null,null,3.2); first.setDetails("산책",120,List.of("https://example.com/a.jpg","https://example.com/b.jpg"));
+  WalkLog first=new WalkLog(null,null,3.2); first.setDetails("산책",120,List.of("http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg","http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg"));
   WalkLog second=new WalkLog(null,null,2.1);
   when(walks.findAllByUserIdOrderByWalkedAtDesc(7L)).thenReturn(List.of(first,second));
   when(courses.findAllByUserIdOrderByIdDesc(7L)).thenReturn(List.of(mock(Course.class)));
@@ -57,5 +59,19 @@ class MyPageServiceTest {
   when(courses.findAllByUserIdOrderByIdDesc(7L)).thenReturn(List.of());
   when(likes.findAllByUserIdOrderByIdDesc(7L)).thenReturn(List.of());
   var result=service.overview(7L); assertNull(result.dog()); assertEquals(0,result.stats().walkCount());
+ }
+
+ @Test void externalWalkPhotosAndCoversAreRejectedBeforePersistence() {
+  assertThrows(IllegalArgumentException.class, () -> service.saveWalk(7L,null,"산책",1,1,
+          List.of("https://example.com/a.jpg"),null,null,List.of()));
+  assertThrows(IllegalArgumentException.class, () -> service.saveWalk(7L,null,"산책",1,1,
+          List.of(),"https://example.com/cover.jpg",null,List.of()));
+  verifyNoInteractions(users,walks,courses);
+ }
+
+ @Test void externalDogImageIsRejectedBeforePersistence() {
+  assertThrows(IllegalArgumentException.class, () -> service.saveDog(7L,"콩이","말티즈",DogSize.SMALL,
+          java.time.LocalDate.of(2024,1,1),"https://example.com/profile.jpg"));
+  verifyNoInteractions(users,dogs);
  }
 }

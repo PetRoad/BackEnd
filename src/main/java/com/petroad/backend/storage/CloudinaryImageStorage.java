@@ -10,11 +10,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "cloudinary")
 public class CloudinaryImageStorage implements ImageStorage {
     private final Cloudinary cloudinary;
+    private final Pattern ownUrl;
 
     public CloudinaryImageStorage(@Value("${cloudinary.cloud-name}") String cloudName,
                                   @Value("${cloudinary.api-key}") String apiKey,
@@ -24,6 +26,14 @@ public class CloudinaryImageStorage implements ImageStorage {
         }
         this.cloudinary = new Cloudinary(ObjectUtils.asMap(
                 "cloud_name", cloudName, "api_key", apiKey, "api_secret", apiSecret, "secure", true));
+        this.ownUrl = Pattern.compile(Pattern.quote("https://res.cloudinary.com/" + cloudName + "/image/upload/")
+                + "v[0-9]+/petroad/(?:walk_photo|course_cover|dog_profile)/"
+                + "[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\.(?:jpg|png|webp)");
+    }
+
+    @Override
+    public boolean isOwnUrl(String url) {
+        return url != null && ownUrl.matcher(url).matches();
     }
 
     @Override

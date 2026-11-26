@@ -3,7 +3,9 @@ package com.petroad.backend.api;
 import com.petroad.backend.security.LoginRateLimitException;
 import org.springframework.http.*;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -20,6 +22,20 @@ public class ApiExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .sorted().collect(java.util.stream.Collectors.joining(", "));
         return ResponseEntity.badRequest().body(new ApiError(message));
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    ResponseEntity<ApiError> invalidParameter(HandlerMethodValidationException exception) {
+        String message = exception.getAllValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> result.getMethodParameter().getParameterName() + ": " + error.getDefaultMessage()))
+                .sorted().collect(java.util.stream.Collectors.joining(", "));
+        return ResponseEntity.status(exception.getStatusCode()).body(new ApiError(message));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    ResponseEntity<ApiError> missingParameter(MissingServletRequestParameterException exception) {
+        return ResponseEntity.badRequest().body(new ApiError(exception.getParameterName() + " 값이 필요합니다."));
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)

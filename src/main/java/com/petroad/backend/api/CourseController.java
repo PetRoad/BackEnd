@@ -5,6 +5,8 @@ import com.petroad.backend.repository.*;
 import com.petroad.backend.application.CourseRecommendationService;
 import com.petroad.backend.application.MyPageService;
 import com.petroad.backend.application.MyPageService.CourseDetail;
+import com.petroad.backend.application.MyPageService.WalkRouteCoordinate;
+import com.petroad.backend.storage.ImageStorage;
 import com.petroad.backend.application.CourseRecommendationService.CourseSummary;
 import com.petroad.backend.application.CourseRecommendationService.Recommendations;
 import io.swagger.v3.oas.annotations.Operation;
@@ -30,19 +32,24 @@ public class CourseController {
     private final CourseLikeRepository likes;
     private final CourseRecommendationService recommendations;
     private final MyPageService myPage;
+    private final ImageStorage images;
 
-    public record Point(double lat, double lng) {
-    }
-
-    public record CourseCreateRequest(@NotBlank String name, String coverImageUrl, @Positive double distance, Difficulty difficulty,
-                         DogSize dogSize, @DecimalMin("-90") double startLat, @DecimalMin("-180") double startLng,
-                         @Size(max = 3) List<String> tags, @NotNull @Size(min = 2) List<Point> points) {
+    public record CourseCreateRequest(@NotBlank @Size(max = 30) String name,
+                         @Size(max = 2048) String coverImageUrl,
+                         @Positive @DecimalMax("200") double distance, Difficulty difficulty, DogSize dogSize,
+                         @NotNull @DecimalMin("-90") @DecimalMax("90") Double startLat,
+                         @NotNull @DecimalMin("-180") @DecimalMax("180") Double startLng,
+                         @Size(max = 3) List<@NotBlank @Size(max = 20) String> tags,
+                         @NotNull @Size(min = 2, max = 5000) List<@NotNull @Valid WalkRouteCoordinate> points) {
     }
 
     @Operation(summary = "산책 코스 등록")
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping
     public CourseSummary create(@RequestAttribute("userId") Long userId, @Valid @RequestBody CourseCreateRequest r) {
+        if (r.coverImageUrl() != null && !images.isOwnUrl(r.coverImageUrl())) {
+            throw new IllegalArgumentException("coverImageUrl은 이미지 업로드 API에서 발급한 주소여야 합니다.");
+        }
         User u = users.findById(userId).orElseThrow();
         Course c = new Course(u, r.name(), r.coverImageUrl(), r.distance(), r.difficulty(), r.dogSize(), r.startLat(), r.startLng());
         for (int i = 0; i < r.points().size(); i++) c.addPoint(r.points().get(i).lat(), r.points().get(i).lng(), i);
@@ -54,7 +61,9 @@ public class CourseController {
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping
     @Transactional(readOnly = true)
-    public Recommendations recommended(@RequestAttribute("userId") Long userId, @RequestParam double lat, @RequestParam double lng) {
+    public Recommendations recommended(@RequestAttribute("userId") Long userId,
+            @RequestParam @DecimalMin("-90") @DecimalMax("90") double lat,
+            @RequestParam @DecimalMin("-180") @DecimalMax("180") double lng) {
         return recommendations.recommended(userId, lat, lng);
     }
 

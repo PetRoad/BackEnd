@@ -9,17 +9,27 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 @Service
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "local", matchIfMissing = true)
 public class LocalImageStorage implements ImageStorage {
     private final Path root;
     private final String baseUrl;
+    private final Pattern ownUrl;
 
     public LocalImageStorage(@Value("${app.storage.local-dir:./uploads}") String dir,
                              @Value("${app.public-url:}") String publicUrl) {
         this.root = Path.of(dir).toAbsolutePath().normalize();
-        this.baseUrl = publicUrl.isBlank() ? "http://localhost:8080" : publicUrl;
+        this.baseUrl = (publicUrl.isBlank() ? "http://localhost:8080" : publicUrl).replaceAll("/+$", "");
+        this.ownUrl = Pattern.compile(Pattern.quote(baseUrl + "/uploads/")
+                + "(?:walk_photo|course_cover|dog_profile)/"
+                + "[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\.(?:jpg|png|webp)");
+    }
+
+    @Override
+    public boolean isOwnUrl(String url) {
+        return url != null && ownUrl.matcher(url).matches();
     }
 
     @Override

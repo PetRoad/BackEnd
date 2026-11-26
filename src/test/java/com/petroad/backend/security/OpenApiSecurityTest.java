@@ -44,13 +44,21 @@ class OpenApiSecurityTest {
                         .value(org.hamcrest.Matchers.containsString("8~14자")))
                 .andExpect(jsonPath("$.servers[0].url").value("https://petroad-api.hrxlou.com"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
-                .andExpect(jsonPath("$.paths['/api/dog'].get.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/api/me'].get.security[0].bearerAuth").exists())
+                .andExpect(jsonPath("$.paths['/api/users/me/region'].put").exists())
+                .andExpect(jsonPath("$.paths['/api/dog']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/users/me']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/auth/health']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/hello']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/courses'].post.requestBody.content['application/json'].schema['$ref']")
                         .value("#/components/schemas/CourseCreateRequest"))
                 .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.points").exists())
                 .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.required")
                         .value(org.hamcrest.Matchers.hasItem("points")))
                 .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.points.minItems").value(2))
+                .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.points.maxItems").value(5000))
+                .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.name.maxLength").value(30))
+                .andExpect(jsonPath("$.components.schemas.CourseCreateRequest.properties.startLat.maximum").value(90))
                 .andExpect(jsonPath("$.components.schemas.Recommendations.properties.radiusKm").exists())
                 .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.creatorDogAge").exists())
                 .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.creatorDogBreed").exists())
@@ -76,15 +84,18 @@ class OpenApiSecurityTest {
                 .andExpect(jsonPath("$.components.schemas.CourseDetail.properties.creatorDogAge").exists())
                 .andExpect(jsonPath("$.components.schemas.CourseSummary.properties.liked.type").value("boolean"))
                 .andExpect(jsonPath("$.components.schemas.MyDogProfileRequest.properties.birthDate").exists())
-                .andExpect(jsonPath("$.components.schemas.DogUpsertRequest.properties.birthDate").exists())
+                .andExpect(jsonPath("$.components.schemas.DogUpsertRequest").doesNotExist())
+                .andExpect(jsonPath("$.components.schemas.WalkCreateRequest.properties.route.maxItems").value(20000))
+                .andExpect(jsonPath("$.components.schemas.WalkCreateRequest.properties.durationSec.maximum").value(172800))
+                .andExpect(jsonPath("$.components.schemas.Signup.properties.email.maxLength").value(255))
                 .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         Files.writeString(Path.of("target/openapi-security-verified.json"), json);
     }
 
     @Test void publicAndUnauthorizedApiResponsesCannotBeCached() throws Exception {
-        mvc.perform(get("/api/hello")).andExpect(status().isOk())
+        mvc.perform(get("/api/auth/health")).andExpect(status().isNotFound())
                 .andExpect(header().string("Cache-Control", "no-store"));
-        mvc.perform(get("/api/dog")).andExpect(status().is4xxClientError())
+        mvc.perform(get("/api/me")).andExpect(status().isUnauthorized())
                 .andExpect(header().string("Cache-Control", "no-store"));
     }
 }
