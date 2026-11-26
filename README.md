@@ -46,20 +46,17 @@ java -jar target/petroad-backend-0.0.1-SNAPSHOT.jar
 
 Swagger: http://localhost:8080/swagger-ui.html
 
-개발 환경 확인용 Hello World API는 인증 없이 호출할 수 있습니다.
+서버 상태는 인증 없이 `/api/health`로 확인합니다. DB 연결이 정상이면 200, 장애가 있으면 503입니다.
 
 ```http
-GET http://localhost:8080/api/hello
+GET http://localhost:8080/api/health
 ```
 
-응답:
-
-```text
-Hello World
+```json
+{"status":"ok","commit":"local"}
 ```
 
-Swagger UI에서 `Hello World 확인` 항목의 `GET /api/hello`를 선택한 뒤
-`Try it out` → `Execute` 순서로 호출할 수 있습니다. OpenAPI 문서는
+Swagger UI의 `GET /api/health`에서 `Try it out` → `Execute` 순서로 호출할 수 있습니다. OpenAPI 문서는
 `http://localhost:8080/v3/api-docs`에서 확인할 수 있습니다.
 
 ## 공용 서버 배포
@@ -127,14 +124,15 @@ Cloudflare Tunnel을 연결할 때는 백엔드에 직접 접근하는 경로를
 | 영역 | API |
 |---|---|
 | 인증 | `POST /api/auth/signup`, `POST /api/auth/login` |
-| 반려견 | `GET/PUT /api/dog` |
+| 내 정보·반려견 | `GET /api/me`, `PUT /api/me/dog` |
+| 동네 설정 | `PUT /api/users/me/region` |
 | 코스 | `POST /api/courses`, `GET /api/courses?lat=&lng=`, `GET/DELETE /api/courses/{id}` |
 | 좋아요 | `POST/DELETE /api/courses/{id}/like` |
 | 산책일지 | `POST/GET /api/me/walks`, `GET/DELETE /api/me/walks/{id}` |
 
 로그인이 필요한 API는 `Authorization: Bearer {accessToken}` 헤더를 사용합니다. 추천 코스는 명세대로 시작점 기준 반경 3km 안에서 좋아요 수 내림차순, 같은 경우 거리 오름차순으로 정렬합니다. 거리는 PostgreSQL의 삼각함수 기반 Haversine 계산으로 조회합니다.
 
-이미지 업로드는 MVP에서 S3 또는 Cloudinary의 업로드 URL을 요청 본문으로 받는 방식으로 두었습니다. 실제 파일 업로드가 필요해지는 시점에 presigned URL API를 추가하면 됩니다.
+이미지는 `POST /api/uploads`로 업로드한 뒤 반환된 URL을 프로필·코스 커버·산책 사진에 사용합니다. 외부 이미지 주소는 저장할 수 없습니다. 업로드 외 요청 본문은 2MB까지이며 초과하면 413입니다. 좌표·길이·개수 상한과 제거된 API는 [입력 검증 규칙](docs/input-validation.md)을 참고하세요.
 
 ## 이슈부터 PR까지
 

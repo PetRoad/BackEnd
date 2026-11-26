@@ -148,9 +148,9 @@ class RefreshTokenApiTest {
         String auth = "Bearer " + owner.get("accessToken").asText();
         String response = mvc.perform(post("/api/me/walks").header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"distanceMeters\":2400,\"durationSec\":1800,\"title\":\"저녁 산책\",\"photos\":[\"https://example.com/walk.jpg\"]}"))
+                        .content("{\"distanceMeters\":2400,\"durationSec\":1800,\"title\":\"저녁 산책\",\"photos\":[\"http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg\"]}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.durationSec").value(1800))
-                .andExpect(jsonPath("$.date").isString()).andExpect(jsonPath("$.photos[0]").value("https://example.com/walk.jpg"))
+                .andExpect(jsonPath("$.date").isString()).andExpect(jsonPath("$.photos[0]").value("http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg"))
                 .andReturn().getResponse().getContentAsString();
         long id = mapper.readTree(response).get("id").asLong();
         mvc.perform(get("/api/me/walks/" + id).header("Authorization", auth))
@@ -167,20 +167,18 @@ class RefreshTokenApiTest {
         assertThat(jdbc.queryForObject("select count(*) from feedback_api_test.walk_log_photos where walk_log_id=?", Integer.class, id)).isZero();
     }
 
-    @Test void bothDogEndpointsRejectFutureBirthWithoutChangingStoredProfile() throws Exception {
+    @Test void dogEndpointRejectsFutureBirthWithoutChangingStoredProfile() throws Exception {
         String auth = "Bearer " + login().get("accessToken").asText();
         String valid = "{\"name\":\"콩이\",\"breed\":\"말티즈\",\"size\":\"SMALL\",\"birthDate\":\"2024-01-01\"}";
         mvc.perform(put("/api/me/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content(valid))
                 .andExpect(status().isOk());
-        for (String endpoint : List.of("/api/me/dog", "/api/dog")) {
-            mvc.perform(put(endpoint).header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                            .content(valid.replace("2024-01-01", "2999-01-01")))
-                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message", org.hamcrest.Matchers.containsString("birthDate")));
-        }
-        mvc.perform(get("/api/dog").header("Authorization", auth)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.birthDate").value("2024-01-01"));
+        mvc.perform(put("/api/me/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content(valid.replace("2024-01-01", "2999-01-01")))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message", org.hamcrest.Matchers.containsString("birthDate")));
+        mvc.perform(get("/api/me").header("Authorization", auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.dog.birthDate").value("2024-01-01"));
         String today = LocalDate.now(ZoneId.of("Asia/Seoul")).toString();
-        mvc.perform(put("/api/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(put("/api/me/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
                         .content(valid.replace("2024-01-01", today)))
                 .andExpect(status().isOk());
     }
@@ -283,12 +281,12 @@ class RefreshTokenApiTest {
                 .andExpect(jsonPath("$.likeCount").value(0));
         mvc.perform(post(coursePath + "/like").header("Authorization", walker)).andExpect(status().isOk());
 
-        String cover = "https://example.com/b.jpg";
+        String cover = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg";
         String walkJson = mvc.perform(post("/api/me/walks").header("Authorization", walker)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"성북천 산책","courseId":"%s","distanceMeters":3200,"durationSec":2880,
-                                 "photos":["https://example.com/a.jpg","%s"],"cover":"%s","completion":85,
+                                 "photos":["http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg","%s"],"cover":"%s","completion":85,
                                  "route":[{"lat":37.5893,"lng":127.0191},{"lat":37.5891,"lng":127.0187},{"lat":37.5893,"lng":127.0191}]}
                                 """.formatted(courseId, cover, cover)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").isString())
@@ -339,5 +337,44 @@ class RefreshTokenApiTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.route").isEmpty())
                 .andExpect(jsonPath("$.completion").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.cover").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test void removedEndpointsReturn404AndUsedEndpointsRemainAvailable() throws Exception {
+        String auth = "Bearer " + login().get("accessToken").asText();
+        for (String path : List.of("/api/dog", "/api/users/me", "/api/auth/health", "/api/hello")) {
+            mvc.perform(get(path).header("Authorization", auth)).andExpect(status().isNotFound());
+        }
+        mvc.perform(put("/api/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/me").header("Authorization", auth)).andExpect(status().isOk());
+        mvc.perform(put("/api/users/me/region").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"region\":\"서울 삼선동\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.region").value("서울 삼선동"));
+        mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"));
+    }
+
+    @Test void imageUrlsAreValidatedBeforeSavingDogWalkAndCourse() throws Exception {
+        String auth = "Bearer " + login().get("accessToken").asText();
+        String image = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000004.png";
+        String dog = """
+                {"name":"콩이","breed":"말티즈","size":"SMALL","birthDate":"2024-01-01","profileImage":"%s"}
+                """;
+        mvc.perform(put("/api/me/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content(dog.formatted(image))).andExpect(status().isOk());
+        mvc.perform(put("/api/me/dog").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content(dog.formatted("https://example.com/profile.png")))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").isString());
+        mvc.perform(get("/api/me").header("Authorization", auth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dog.profileImage").value(image));
+        String walk = "{\"distanceMeters\":1,\"photos\":[\"%s\"],\"cover\":\"%s\"}";
+        mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content(walk.formatted(image,image))).andExpect(status().isOk());
+        for (String url : List.of("https://example.com/photo.png", "https://res.cloudinary.com/other/image/fetch/https://example.com/photo.png")) {
+            mvc.perform(post("/api/me/walks").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                            .content(walk.formatted(url,url)))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").isString());
+        }
+        mvc.perform(get("/api/me/walks").header("Authorization", auth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
     }
 }

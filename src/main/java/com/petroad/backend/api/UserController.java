@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -18,15 +19,7 @@ public class UserController {
     private final UserRepository users;
 
     public record MyInfo(Long userId, String email, String region) {}
-    public record RegionRequest(@NotBlank String region) {}
-
-    @Operation(summary = "내 정보 조회")
-    @SecurityRequirement(name = "bearerAuth")
-    @GetMapping("/me")
-    public MyInfo me(HttpServletRequest request) {
-        User u = findCurrentUser(request);
-        return new MyInfo(u.getId(), u.getEmail(), u.getRegion());
-    }
+    public record RegionRequest(@NotBlank @Size(max = 100) String region) {}
 
     @Operation(summary = "내 동네(지역) 설정")
     @Transactional

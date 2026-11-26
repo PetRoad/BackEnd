@@ -52,7 +52,8 @@ PostgreSQL 하버사인 쿼리로 먼저 3km 이내 코스만 조회한 뒤, Jav
 반려견이 없으면 `creatorDogBreed`·`creatorDogAge`는 null, 생년월일이 없거나 미래이면 `creatorDogAge`는 null이다.
 
 `POST /api/courses`의 요청 DTO 이름은 `CourseCreateRequest`다.
-`points`는 필수이며 좌표가 최소 2개여야 한다. 누락·null·2개 미만이면 저장 전에 400으로 거절한다.
+`points`는 필수이며 좌표가 2~5,000개여야 한다. 각 좌표의 위도·경도와 코스 시작 좌표는 필수이고 위도 -90~90, 경도 -180~180 범위여야 한다. null 좌표와 범위 밖 값은 저장 전에 400으로 거절한다.
+코스 이름은 30자, 태그는 각 20자(공백 불가, 최대 3개), 거리는 0 초과 200km 이하이다. 커버는 이미지 업로드 API의 URL 또는 null이다. 본문이 2MB를 초과하면 413이다. 전체 규칙은 [입력 검증](input-validation.md)을 참고한다.
 등록 요청의 `distance`는 기존과 같이 km이고, `dogSize`도 등록 메타데이터로 유지한다.
 등록·좋아요·좋아요 취소 응답도 새 `CourseSummary`를 사용하며,
 이 요청들은 기준 위치를 받지 않으므로 `distanceFromKm`는 null이다.

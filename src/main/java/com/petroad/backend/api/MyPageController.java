@@ -29,13 +29,13 @@ public class MyPageController {
  public record WalkCreateRequest(
          @Size(max = 100) String title,
          @Pattern(regexp = "[1-9][0-9]{0,18}") @Schema(example = "12", nullable = true) String courseId,
-         @NotNull @PositiveOrZero Double distanceMeters,
-         @PositiveOrZero Integer durationSec,
-         @Size(max = 100) List<@NotBlank @Size(max = 2048) @Pattern(regexp = "https?://.+") String> photos,
-         @Size(max = 2048) @Pattern(regexp = "https?://.+") String cover,
+         @NotNull @PositiveOrZero @DecimalMax("200000") Double distanceMeters,
+         @PositiveOrZero @Max(172800) Integer durationSec,
+         @Size(max = 100) List<@NotBlank @Size(max = 2048) String> photos,
+         @Size(max = 2048) String cover,
          @Min(0) @Max(100) @Digits(integer = 3, fraction = 0)
          @Schema(type = "integer", nullable = true, description = "코스 완주율(0~100). 자유 산책은 null") BigDecimal completion,
-         List<@NotNull @Valid WalkRouteCoordinate> route) {}
+         @Size(max = 20000) List<@NotNull @Valid WalkRouteCoordinate> route) {}
 
  @Operation(summary = "내 산책일지 저장", description = "거리는 미터로 받습니다. GPS 경로와 사진은 입력 순서대로 저장합니다.")
  @PostMapping("/walks")
@@ -64,7 +64,7 @@ public class MyPageController {
  @GetMapping("/likes") public List<CourseDetail> likes(@RequestAttribute("userId") Long userId) {return service.courses(userId,true);}
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
  @Schema(name = "MyDogProfileRequest")
- public record DogRequest(@NotBlank @Size(max=100) String name,@NotBlank @Size(max=100) String breed,@NotNull DogSize size,@NotNull @PastOrPresent(message="반려견 생일은 오늘 또는 과거 날짜여야 합니다.") LocalDate birthDate,@Size(max=2048) @Pattern(regexp="https?://.+") String profileImage) {}
+ public record DogRequest(@NotBlank @Size(max=100) String name,@NotBlank @Size(max=100) String breed,@NotNull DogSize size,@NotNull @PastOrPresent(message="반려견 생일은 오늘 또는 과거 날짜여야 합니다.") LocalDate birthDate,@Size(max=2048) String profileImage) {}
  @Operation(summary = "내 반려견 정보 등록·수정")
  @PutMapping("/dog") public DogProfile saveDog(@RequestAttribute("userId") Long userId,@Valid @RequestBody DogRequest r) {
   return service.saveDog(userId,r.name().trim(),r.breed().trim(),r.size(),r.birthDate(),r.profileImage());

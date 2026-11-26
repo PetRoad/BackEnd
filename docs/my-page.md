@@ -19,7 +19,7 @@
 
 `GET /api/me`의 `dog.breed`, `PUT /api/me/dog`의 `breed`는 **내 반려견**의 견종입니다. 코스 `CourseSummary`의 `creatorDogBreed`·`creatorDogAge`는 **코스 작성자의 반려견** 정보입니다. 기존 코스 응답의 `breed`·`dogAge`는 제거했으므로 프론트도 함께 변경해야 합니다. 나이는 서울 날짜 기준 만 나이이며 반려견이 없으면 null입니다.
 
-`PUT /api/me/dog` 하나로 등록과 수정을 처리합니다. 필수 입력은 `name`, `breed`, `size` (`SMALL`, `MEDIUM`, `LARGE`), `birthDate` (`YYYY-MM-DD`)입니다. `profileImage`는 선택 HTTP(S) URL 또는 null입니다. 미래 생일은 서울 기준으로 판단해 400을 반환하며 DB를 변경하지 않습니다. 레거시 `/api/dog`도 미래 생일을 400으로 거절하며 기존 선택 필드 정책은 유지합니다.
+`PUT /api/me/dog` 하나로 등록과 수정을 처리합니다. 필수 입력은 `name`, `breed`, `size` (`SMALL`, `MEDIUM`, `LARGE`), `birthDate` (`YYYY-MM-DD`)입니다. `profileImage`는 이미지 업로드 API에서 발급한 URL 또는 null입니다. 미래 생일은 서울 기준으로 판단해 400을 반환하며 DB를 변경하지 않습니다. 반려견 정보는 `GET /api/me`의 `dog`에서 조회합니다.
 
 ## 카운트의 의미
 
@@ -44,11 +44,11 @@
   "date": "2026-11-05",
   "distanceMeters": 2400,
   "durationSec": 1800,
-  "photos": ["https://example.com/walk.jpg"],
+  "photos": ["http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg"],
   "courseId": "12",
   "route": [{"lat": 37.5891, "lng": 127.0187}],
   "completion": 85,
-  "cover": "https://example.com/walk.jpg"
+  "cover": "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg"
 }
 ```
 
@@ -68,8 +68,8 @@
   "courseId": "12",
   "distanceMeters": 3200,
   "durationSec": 2880,
-  "photos": ["https://example.com/a.jpg", "https://example.com/b.jpg"],
-  "cover": "https://example.com/b.jpg",
+  "photos": ["http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg", "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg"],
+  "cover": "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg",
   "completion": 85,
   "route": [
     {"lat": 37.5891, "lng": 127.0187},
@@ -78,11 +78,13 @@
 }
 ```
 
-- `distanceMeters`는 필수이며 단위는 미터입니다. 산책 ID와 코스 ID는 응답에서 문자열로 반환합니다.
-- `durationSec`는 실제 산책 시간(초)입니다. 선택 입력이며 0 이상이어야 합니다.
-- `route`는 저장·조회 시 입력 순서를 유지합니다. 빈 배열이나 미입력을 허용합니다.
+- `distanceMeters`는 필수이며 0~200,000미터입니다. 산책 ID와 코스 ID는 응답에서 문자열로 반환합니다.
+- `durationSec`는 실제 산책 시간(초)입니다. 선택 입력이며 0~172,800초(48시간)입니다.
+- `route`는 최대 20,000개이며 저장·조회 시 입력 순서를 유지합니다. 빈 배열이나 미입력을 허용합니다.
 - `completion`은 코스 산책의 완주율이며 0~100 정수 또는 null입니다. 자유 산책이면 null입니다.
 - `cover`는 `photos`에 포함된 URL 또는 null입니다.
+- `photos`는 최대 100개이며 모든 사진과 커버는 현재 저장소의 업로드 URL이어야 합니다. 외부 주소는 400입니다.
+- 본문이 2MB를 초과하면 413입니다. 전체 제한은 [입력 검증 규칙](input-validation.md)을 참고하세요.
 - 없는 코스 ID는 404입니다. 필드 검증 실패는 400입니다.
 - `date`는 서버 저장 시각을 한국 기준 `YYYY-MM-DD`로 변환한 값입니다. 저장 시각이 없는 과거 기록에서는 null입니다.
 

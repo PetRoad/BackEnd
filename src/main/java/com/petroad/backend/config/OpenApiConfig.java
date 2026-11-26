@@ -7,6 +7,10 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import io.swagger.v3.oas.models.servers.Server;
+import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.responses.ApiResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,9 +32,20 @@ public class OpenApiConfig {
     public OpenApiCustomizer apiAuthentication() {
         return api -> api.getPaths().forEach((path, item) -> {
             boolean protectedApi = path.startsWith("/api/") && !path.startsWith("/api/auth/")
-                    && !path.equals("/api/hello") && !path.equals("/api/health");
-            item.readOperations().forEach(operation -> operation.setSecurity(protectedApi
-                    ? List.of(new SecurityRequirement().addList("bearerAuth")) : List.of()));
+                    && !path.equals("/api/health");
+            item.readOperations().forEach(operation -> {
+                operation.setSecurity(protectedApi
+                        ? List.of(new SecurityRequirement().addList("bearerAuth")) : List.of());
+                if (operation.getRequestBody() != null && !path.equals("/api/uploads")) {
+                    operation.getResponses().putIfAbsent("400", errorResponse("입력값 검증 실패"));
+                    operation.getResponses().addApiResponse("413", errorResponse("요청 본문이 2MB(2,097,152바이트)를 초과함"));
+                }
+            });
         });
+    }
+
+    private static ApiResponse errorResponse(String description) {
+        return new ApiResponse().description(description).content(new Content().addMediaType("application/json",
+                new MediaType().schema(new Schema<>().$ref("#/components/schemas/ApiError"))));
     }
 }

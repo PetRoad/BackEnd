@@ -5,6 +5,7 @@ import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
 import com.petroad.backend.security.JwtInterceptor;
 import com.petroad.backend.security.JwtService;
+import com.petroad.backend.storage.LocalImageStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,7 +38,7 @@ class CourseRecommendationWebTest {
         var likes = mock(CourseLikeRepository.class);
         var service = new CourseRecommendationService(courses, dogs, likes);
         mvc = MockMvcBuilders.standaloneSetup(new CourseController(courses, users,
-                        likes, service, mock(com.petroad.backend.application.MyPageService.class)))
+                        likes, service, mock(com.petroad.backend.application.MyPageService.class), new LocalImageStorage("target/test-images", "")))
                 .setControllerAdvice(new ApiExceptionHandler()).addInterceptors(new JwtInterceptor(jwt)).build();
     }
 
