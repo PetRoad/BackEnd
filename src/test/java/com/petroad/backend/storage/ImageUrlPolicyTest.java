@@ -39,7 +39,9 @@ class ImageUrlPolicyTest {
 
     @Test void localStorageAcceptsItsOwnGeneratedUrlAndRejectsOtherOriginsAndPaths() {
         ImageStorage storage = new LocalImageStorage(dir.toString(), "https://api.example.test/");
-        String url = storage.save("walk_photo", FILE, new MockMultipartFile("file", new byte[]{1, 2, 3}));
+        ImageStorage.StoredImage stored = storage.save("walk_photo", FILE, new MockMultipartFile("file", new byte[]{1, 2, 3}));
+        String url = stored.url();
+        assertThat(stored.publicId()).isEqualTo("walk_photo/" + FILE);
         assertThat(url).isEqualTo("https://api.example.test/uploads/walk_photo/" + FILE);
         assertThat(storage.isOwnUrl(url)).isTrue();
         assertThat(storage.isOwnUrl(null)).isFalse();

@@ -29,6 +29,7 @@ class OpenApiSecurityTest {
     @MockBean private WalkLogRepository logs;
     @MockBean private RefreshTokenRepository refreshTokens;
     @MockBean private RefreshSessionRepository refreshSessions;
+    @MockBean private UploadedImageRepository uploadedImages;
     @MockBean private javax.sql.DataSource dataSource;
     @MockBean private RateLimiter rateLimiter;
 

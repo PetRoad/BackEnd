@@ -65,6 +65,14 @@ class RefreshTokenApiTest {
                 .andReturn().getResponse().getContentAsString());
     }
 
+    // 업로드 API를 거치지 않고, 이 사용자가 올린 사진이라는 기록만 만든다.
+    private void uploadedBy(JsonNode user, String... urls) {
+        for (String url : urls) {
+            jdbc.update("insert into feedback_api_test.uploaded_images(user_id,public_id,url) values (?,?,?)",
+                    user.get("userId").asLong(), url.substring(url.indexOf("/uploads/") + "/uploads/".length()), url);
+        }
+    }
+
     private String body(String raw) throws Exception { return mapper.writeValueAsString(Map.of("refreshToken", raw)); }
 
     @Test void rotationStoresOnlyHashesAndReplayRevokesTheWholeSessionPersistently() throws Exception {
@@ -151,6 +159,7 @@ class RefreshTokenApiTest {
     @Test void walkRegistrationReturnsDateAndDurationAndOnlyOwnerCanDelete() throws Exception {
         JsonNode owner = login(), other = login();
         String auth = "Bearer " + owner.get("accessToken").asText();
+        uploadedBy(owner, "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg");
         String response = mvc.perform(post("/api/me/walks").header("Authorization", auth)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"distanceMeters\":2400,\"durationSec\":1800,\"title\":\"저녁 산책\",\"photos\":[\"http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000001.jpg\"]}"))
@@ -241,7 +250,8 @@ class RefreshTokenApiTest {
 
     @Test void courseDetailLikesAndDeletionPreserveTheFollowersWalk() throws Exception {
         String owner = "Bearer " + login().get("accessToken").asText();
-        String walker = "Bearer " + login().get("accessToken").asText();
+        JsonNode walkerLogin = login();
+        String walker = "Bearer " + walkerLogin.get("accessToken").asText();
         mvc.perform(put("/api/me/dog").header("Authorization", owner).contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"몽이","breed":"말티즈","size":"SMALL","birthDate":"2024-03-15"}
@@ -287,6 +297,7 @@ class RefreshTokenApiTest {
         mvc.perform(post(coursePath + "/like").header("Authorization", walker)).andExpect(status().isOk());
 
         String cover = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg";
+        uploadedBy(walkerLogin, "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg", cover);
         String walkJson = mvc.perform(post("/api/me/walks").header("Authorization", walker)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -359,8 +370,10 @@ class RefreshTokenApiTest {
     }
 
     @Test void imageUrlsAreValidatedBeforeSavingDogWalkAndCourse() throws Exception {
-        String auth = "Bearer " + login().get("accessToken").asText();
+        JsonNode uploader = login();
+        String auth = "Bearer " + uploader.get("accessToken").asText();
         String image = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000004.png";
+        uploadedBy(uploader, image);
         String dog = """
                 {"name":"콩이","breed":"말티즈","size":"SMALL","birthDate":"2024-01-01","profileImage":"%s"}
                 """;
@@ -381,5 +394,24 @@ class RefreshTokenApiTest {
         }
         mvc.perform(get("/api/me/walks").header("Authorization", auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+
+        // 다른 사람이 올린 사진은 주소 형식이 맞아도 반려견·산책일지·코스에 사용할 수 없다.
+        String other = "Bearer " + login().get("accessToken").asText();
+        String course = """
+                {"name":"남의 사진 코스","distance":0.43,"startLat":0,"startLng":0,"coverImageUrl":"%s",
+                 "points":[{"lat":0,"lng":0},{"lat":0.002,"lng":0}]}
+                """.formatted(image);
+        for (var request : List.of(
+                put("/api/me/dog").contentType(MediaType.APPLICATION_JSON).content(dog.formatted(image)),
+                post("/api/me/walks").contentType(MediaType.APPLICATION_JSON).content(walk.formatted(image, image)),
+                post("/api/courses").contentType(MediaType.APPLICATION_JSON).content(course))) {
+            mvc.perform(request.header("Authorization", other))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message", org.hamcrest.Matchers.containsString("본인이 업로드한")));
+        }
+        mvc.perform(get("/api/me/walks").header("Authorization", other))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
+        mvc.perform(get("/api/me/courses").header("Authorization", other))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
     }
 }

@@ -37,14 +37,14 @@ public class CloudinaryImageStorage implements ImageStorage {
     }
 
     @Override
-    public String save(String folder, String filename, MultipartFile file) {
+    public StoredImage save(String folder, String filename, MultipartFile file) {
         String publicId = "petroad/" + folder + "/" + stripExtension(filename);
         try {
             Map<?, ?> result = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
                     "public_id", publicId, "resource_type", "image", "overwrite", false));
             Object url = result.get("secure_url");
             if (url == null) throw new IllegalStateException("이미지 저장소가 주소를 돌려주지 않았습니다.");
-            return url.toString();
+            return new StoredImage(publicId, url.toString());
         } catch (IOException e) {
             throw new UncheckedIOException("이미지 저장에 실패했습니다.", e);
         }

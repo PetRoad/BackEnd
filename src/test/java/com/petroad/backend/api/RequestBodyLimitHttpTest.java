@@ -71,7 +71,8 @@ class RequestBodyLimitHttpTest {
     @Test void imageUploadKeepsItsExistingTenMegabyteLimitInsteadOfTheJsonLimit() throws Exception {
         User user = users.save(new User(UUID.randomUUID() + "@example.com", "fixture-hash"));
         String url = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000005.png";
-        when(images.save(eq("walk_photo"), endsWith(".png"), any())).thenReturn(url);
+        when(images.save(eq("walk_photo"), endsWith(".png"), any())).thenReturn(
+                new ImageStorage.StoredImage("walk_photo/00000000-0000-0000-0000-000000000005.png", url));
         String boundary = "petroad-test-boundary";
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         bytes.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nWALK_PHOTO\r\n"

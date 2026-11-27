@@ -37,7 +37,7 @@ public class MyPageController {
          @Schema(type = "integer", nullable = true, description = "코스 완주율(0~100). 자유 산책은 null") BigDecimal completion,
          @Size(max = 20000) List<@NotNull @Valid WalkRouteCoordinate> route) {}
 
- @Operation(summary = "내 산책일지 저장", description = "거리는 미터로 받습니다. GPS 경로와 사진은 입력 순서대로 저장합니다.")
+ @Operation(summary = "내 산책일지 저장", description = "거리는 미터로 받습니다. GPS 경로와 사진은 입력 순서대로 저장합니다. photos와 cover에는 본인이 업로드한 사진만 사용할 수 있습니다.")
  @PostMapping("/walks")
  public WalkDetail saveWalk(@RequestAttribute("userId") Long userId, @Valid @RequestBody WalkCreateRequest request) {
   Long courseId;
@@ -65,7 +65,7 @@ public class MyPageController {
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
  @Schema(name = "MyDogProfileRequest")
  public record DogRequest(@NotBlank @Size(max=100) String name,@NotBlank @Size(max=100) String breed,@NotNull DogSize size,@NotNull @PastOrPresent(message="반려견 생일은 오늘 또는 과거 날짜여야 합니다.") LocalDate birthDate,@Size(max=2048) String profileImage) {}
- @Operation(summary = "내 반려견 정보 등록·수정")
+ @Operation(summary = "내 반려견 정보 등록·수정", description = "profileImage에는 본인이 업로드한 사진만 사용할 수 있습니다.")
  @PutMapping("/dog") public DogProfile saveDog(@RequestAttribute("userId") Long userId,@Valid @RequestBody DogRequest r) {
   return service.saveDog(userId,r.name().trim(),r.breed().trim(),r.size(),r.birthDate(),r.profileImage());
  }

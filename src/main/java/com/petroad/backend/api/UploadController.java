@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.petroad.backend.application.UploadedImageService;
 import com.petroad.backend.security.RateLimiter;
 import com.petroad.backend.storage.ImageStorage;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class UploadController {
 
     private final ImageStorage storage;
     private final RateLimiter rateLimiter;
+    private final UploadedImageService uploadedImages;
     public enum Purpose { WALK_PHOTO, COURSE_COVER, DOG_PROFILE }
 
     public record UploadResponse(String url) {}
@@ -60,8 +62,9 @@ public class UploadController {
                 MAX_UPLOADS_PER_DAY, UPLOAD_WINDOW);
         // 기존: return new UploadResponse("test://" + ...);
         try {
-            String url = storage.save(purpose.name().toLowerCase(), name, file);
-            return new UploadResponse(url);
+            ImageStorage.StoredImage stored = storage.save(purpose.name().toLowerCase(), name, file);
+            uploadedImages.record(userId, stored);
+            return new UploadResponse(stored.url());
         } catch (RuntimeException failure) {
             cancelUploadRecord(hitId, failure);
             throw failure;

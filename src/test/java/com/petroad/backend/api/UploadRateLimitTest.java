@@ -43,7 +43,7 @@ class UploadRateLimitTest {
         properties.add("spring.datasource.url", () -> System.getenv("PETROAD_DB_TEST_URL"));
     }
     private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
-    private static final String URL = "http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000006.png";
+    private static final String URL_PREFIX = "http://localhost:8080/uploads/walk_photo/";
 
     @Autowired UploadController controller;
     @Autowired MockMvc mvc;
@@ -53,11 +53,30 @@ class UploadRateLimitTest {
     @MockBean ImageStorage images;
     @MockBean Clock clock;
     private final Instant now = Instant.parse("2026-11-27T00:00:00Z");
+    // 업로드 기록은 실제 사용자에게 연결되므로 테스트마다 사용자를 만든다.
+    private long first;
+    private long second;
 
     @BeforeEach void reset() {
         when(clock.instant()).thenReturn(now);
-        when(images.save(any(), any(), any())).thenReturn(URL);
+        when(images.save(any(), any(), any())).thenAnswer(invocation -> storedImage());
         jdbc.update("delete from rate_limit_hits");
+        first = newUser().getId();
+        second = newUser().getId();
+    }
+
+    private User newUser() {
+        return users.save(new User(UUID.randomUUID() + "@example.com", "fixture-hash"));
+    }
+
+    // 실제 저장소처럼 저장할 때마다 새 이름과 주소를 돌려준다.
+    private static ImageStorage.StoredImage storedImage() {
+        String publicId = "walk_photo/" + UUID.randomUUID() + ".png";
+        return new ImageStorage.StoredImage(publicId, "http://localhost:8080/uploads/" + publicId);
+    }
+
+    private List<String> recordedImageUrls(long userId) {
+        return jdbc.queryForList("select url from uploaded_images where user_id = ? order by id", String.class, userId);
     }
 
     private static MockMultipartFile png() { return new MockMultipartFile("file", "a.png", "image/png", PNG); }
@@ -76,40 +95,49 @@ class UploadRateLimitTest {
                 Integer.class, String.valueOf(userId));
     }
 
+    @Test void successfulUploadIsRecordedForTheUploader() {
+        String url = upload(first).url();
+        assertThat(recordedImageUrls(first)).containsExactly(url);
+        assertThat(recordedImageUrls(second)).isEmpty();
+    }
+
     @Test void the301stUploadIsBlockedUntilADayPasses() {
-        seed(1L, 299);
-        assertThat(upload(1L).url()).isEqualTo(URL);
-        assertThatThrownBy(() -> upload(1L)).isInstanceOfSatisfying(LoginRateLimitException.class,
+        seed(first, 299);
+        assertThat(upload(first).url()).startsWith(URL_PREFIX);
+        assertThatThrownBy(() -> upload(first)).isInstanceOfSatisfying(LoginRateLimitException.class,
                 exception -> assertThat(exception.getRetryAfterSeconds()).isEqualTo(86400));
         verify(images, times(1)).save(any(), any(), any());
-        assertThat(upload(2L).url()).isEqualTo(URL);
+        assertThat(upload(second).url()).startsWith(URL_PREFIX);
         when(clock.instant()).thenReturn(now.plus(Duration.ofDays(1)));
-        assertThat(upload(1L).url()).isEqualTo(URL);
+        assertThat(upload(first).url()).startsWith(URL_PREFIX);
     }
 
     @Test void onlySuccessfulSavesStayCounted() {
-        seed(1L, 299);
-        when(images.save(any(), any(), any())).thenThrow(new IllegalStateException("저장 실패")).thenReturn(URL);
-        assertThatThrownBy(() -> upload(1L)).isInstanceOf(IllegalStateException.class);
-        assertThat(recorded(1L)).isEqualTo(299);
-        assertThat(upload(1L).url()).isEqualTo(URL);
-        assertThat(recorded(1L)).isEqualTo(300);
+        seed(first, 299);
+        when(images.save(any(), any(), any())).thenThrow(new IllegalStateException("저장 실패"))
+                .thenAnswer(invocation -> storedImage());
+        assertThatThrownBy(() -> upload(first)).isInstanceOf(IllegalStateException.class);
+        assertThat(recorded(first)).isEqualTo(299);
+        assertThat(recordedImageUrls(first)).isEmpty();
+        String url = upload(first).url();
+        assertThat(recorded(first)).isEqualTo(300);
+        assertThat(recordedImageUrls(first)).containsExactly(url);
     }
 
     @Test void rejectedFilesAreNotCounted() {
         var text = new MockMultipartFile("file", "fake.png", "image/png", "not an image".getBytes());
-        assertThatThrownBy(() -> controller.upload(1L, text, UploadController.Purpose.WALK_PHOTO))
+        assertThatThrownBy(() -> controller.upload(first, text, UploadController.Purpose.WALK_PHOTO))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(recorded(1L)).isZero();
+        assertThat(recorded(first)).isZero();
     }
 
     @Test void parallelUploadsRunTogetherWithoutExceedingTheLimit() throws Exception {
-        seed(1L, 296);
+        seed(first, 296);
         // 네 요청이 동시에 저장 단계에 들어와야 통과한다. 업로드가 한 장씩 처리되면 시간 초과로 실패한다.
         var savingTogether = new CyclicBarrier(4);
         when(images.save(any(), any(), any())).thenAnswer(invocation -> {
             savingTogether.await(10, TimeUnit.SECONDS);
-            return URL;
+            return storedImage();
         });
         int requests = 8;
         var pool = Executors.newFixedThreadPool(requests);
@@ -120,7 +148,7 @@ class UploadRateLimitTest {
                 results.add(pool.submit(() -> {
                     start.await();
                     try {
-                        upload(1L);
+                        upload(first);
                         return true;
                     } catch (LoginRateLimitException limited) {
                         return false;
@@ -132,17 +160,17 @@ class UploadRateLimitTest {
             for (var result : results) succeeded.add(result.get(30, TimeUnit.SECONDS));
             assertThat(succeeded).filteredOn(ok -> ok).hasSize(4);
             assertThat(succeeded).filteredOn(ok -> !ok).hasSize(4);
-            assertThat(recorded(1L)).isEqualTo(300);
+            assertThat(recorded(first)).isEqualTo(300);
+            assertThat(recordedImageUrls(first)).hasSize(4);
         } finally {
             pool.shutdownNow();
         }
     }
 
     @Test void limitedUploadRequestReturns429WithRetryAfter() throws Exception {
-        User user = users.save(new User(UUID.randomUUID() + "@example.com", "fixture-hash"));
-        seed(user.getId(), 300);
+        seed(first, 300);
         mvc.perform(multipart("/api/uploads").file(png()).param("purpose", "WALK_PHOTO")
-                        .header("Authorization", "Bearer " + jwt.issue(user.getId())))
+                        .header("Authorization", "Bearer " + jwt.issue(first)))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "86400"));
         verify(images, never()).save(any(), any(), any());

@@ -1,5 +1,6 @@
 package com.petroad.backend.api;
 
+import com.petroad.backend.application.UploadedImageService;
 import com.petroad.backend.security.JwtInterceptor;
 import com.petroad.backend.security.JwtService;
 import com.petroad.backend.security.LoginRateLimitException;
@@ -35,13 +36,14 @@ class UploadControllerTest {
 
     private final ImageStorage storage = mock(ImageStorage.class);
     private final RateLimiter rateLimiter = mock(RateLimiter.class);
+    private final UploadedImageService uploadedImages = mock(UploadedImageService.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setup() {
         JwtService jwt = mock(JwtService.class);
         when(jwt.parseUserId("valid")).thenReturn(7L);
-        mvc = MockMvcBuilders.standaloneSetup(new UploadController(storage, rateLimiter))
+        mvc = MockMvcBuilders.standaloneSetup(new UploadController(storage, rateLimiter, uploadedImages))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new JwtInterceptor(jwt))
                 .build();
@@ -49,8 +51,8 @@ class UploadControllerTest {
 
     @Test
     void uploadsPngAndReturnsStorageUrl() throws Exception {
-        when(storage.save(eq("walk_photo"), endsWith(".png"), any()))
-                .thenReturn("https://res.cloudinary.com/test/image/upload/a.png");
+        var stored = new ImageStorage.StoredImage("petroad/walk_photo/a", "https://res.cloudinary.com/test/image/upload/a.png");
+        when(storage.save(eq("walk_photo"), endsWith(".png"), any())).thenReturn(stored);
 
         mvc.perform(multipart("/api/uploads")
                         .file(new MockMultipartFile("file", "a.png", "image/png", PNG))
@@ -60,6 +62,22 @@ class UploadControllerTest {
                 .andExpect(jsonPath("$.url").value("https://res.cloudinary.com/test/image/upload/a.png"));
         verify(rateLimiter).consume("upload", "7", 300, Duration.ofDays(1));
         verify(rateLimiter, never()).cancel(anyLong());
+        verify(uploadedImages).record(7L, stored);
+    }
+
+    @Test
+    void failedRecordCancelsTheCountedUpload() {
+        when(rateLimiter.consume("upload", "7", 300, Duration.ofDays(1))).thenReturn(12L);
+        var stored = new ImageStorage.StoredImage("petroad/walk_photo/a", "https://res.cloudinary.com/test/image/upload/a.png");
+        when(storage.save(eq("walk_photo"), endsWith(".png"), any())).thenReturn(stored);
+        doThrow(new IllegalStateException("기록 실패")).when(uploadedImages).record(7L, stored);
+
+        assertThatThrownBy(() -> mvc.perform(multipart("/api/uploads")
+                        .file(new MockMultipartFile("file", "a.png", "image/png", PNG))
+                        .param("purpose", "WALK_PHOTO")
+                        .header("Authorization", "Bearer valid")))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        verify(rateLimiter).cancel(12L);
     }
 
     @Test
@@ -74,6 +92,7 @@ class UploadControllerTest {
                         .header("Authorization", "Bearer valid")))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
         verify(rateLimiter).cancel(11L);
+        verifyNoInteractions(uploadedImages);
     }
 
     @Test
