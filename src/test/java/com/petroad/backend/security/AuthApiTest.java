@@ -32,18 +32,20 @@ class AuthApiTest {
     private MockMvc mvc;
     private MutableClock clock;
     private PasswordEncoder encoder;
+    private RateLimiter rateLimiter;
 
     @BeforeEach void setup() {
         users = mock(UserRepository.class);
         encoder = new PasswordConfig().passwordEncoder();
         clock = new MutableClock();
+        rateLimiter = mock(RateLimiter.class);
         var properties = LoginThrottleTest.settings(5, 30, 100);
         var jwt = new JwtService(JwtServiceTest.KEY, 60000);
         var sessions = mock(RefreshSessionRepository.class);
         when(sessions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var refreshTokens = new RefreshTokenService(sessions, mock(RefreshTokenRepository.class), jwt, clock, Duration.ofDays(30));
         var controller = new AuthController(users, encoder,
-                new LoginThrottle(properties, clock), new ClientIpResolver(properties), refreshTokens);
+                new LoginThrottle(properties, clock), new ClientIpResolver(properties), refreshTokens, rateLimiter);
         mvc = MockMvcBuilders.standaloneSetup(controller, new UserController(users))
                 .addMappedInterceptors(new String[]{"/api/users/**"}, new JwtInterceptor(jwt)).setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper)).build();
@@ -149,6 +151,15 @@ class AuthApiTest {
         // CVE-2025-22228: the old encoder accepted suffixes after the first 72 bytes.
         assertThat(encoder.matches(prefix + "X", hash)).isFalse();
         assertThatThrownBy(() -> encoder.encode(prefix + "X")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void limitedSignupReturns429BeforeTouchingUsers() throws Exception {
+        doThrow(new LoginRateLimitException(120)).when(rateLimiter)
+                .consume("signup", "192.0.2.1", 10, Duration.ofHours(1));
+        mvc.perform(request("/api/auth/signup", "user@example.com", "Password123!", "192.0.2.1"))
+                .andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After", "120"))
+                .andExpect(jsonPath("$.message").isString());
+        verifyNoInteractions(users);
     }
 
     @Test void nullAndBlankSignupPasswordsReturn400() throws Exception {

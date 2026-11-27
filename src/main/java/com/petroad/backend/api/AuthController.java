@@ -14,24 +14,32 @@ import jakarta.validation.constraints.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+    private static final String SIGNUP_LIMIT_BUCKET = "signup";
+    private static final int MAX_SIGNUPS_PER_IP = 10;
+    private static final Duration SIGNUP_WINDOW = Duration.ofHours(1);
+
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final LoginThrottle throttle;
     private final ClientIpResolver clientIp;
     private final RefreshTokenService refreshTokens;
+    private final RateLimiter rateLimiter;
     private final String dummyPasswordHash;
 
     public AuthController(UserRepository users, PasswordEncoder encoder,
-                          LoginThrottle throttle, ClientIpResolver clientIp, RefreshTokenService refreshTokens) {
+                          LoginThrottle throttle, ClientIpResolver clientIp, RefreshTokenService refreshTokens,
+                          RateLimiter rateLimiter) {
         this.users = users;
         this.encoder = encoder;
         this.throttle = throttle;
         this.clientIp = clientIp;
         this.refreshTokens = refreshTokens;
+        this.rateLimiter = rateLimiter;
         this.dummyPasswordHash = encoder.encode("not-a-real-account-password");
     }
 
@@ -56,14 +64,20 @@ public class AuthController {
                                  @Schema(accessMode = Schema.AccessMode.WRITE_ONLY) String refreshToken) {
     }
 
-    @Operation(summary = "회원가입", description = "이메일과 비밀번호로 가입합니다. 동네·반려견은 가입 후 설정하고, 토큰은 로그인 API에서 발급합니다.")
+    @Operation(summary = "회원가입", description = "이메일과 비밀번호로 가입합니다. 동네·반려견은 가입 후 설정하고, 토큰은 로그인 API에서 발급합니다. IP당 1시간에 10번까지 시도할 수 있고, 이메일 중복으로 실패한 시도도 셉니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "회원가입 성공"),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패 또는 이메일 중복",
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class))),
+            @ApiResponse(responseCode = "429", description = "가입 횟수 제한. Retry-After 초 이후 다시 시도하세요.",
+                    headers = @Header(name = "Retry-After", description = "재시도까지 대기할 초",
+                            schema = @Schema(type = "integer", minimum = "1")),
                     content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class)))
     })
     @PostMapping("/signup")
-    public SignupResponse signup(@Valid @RequestBody Signup r) {
+    public SignupResponse signup(@Valid @RequestBody Signup r, HttpServletRequest servletRequest) {
+        rateLimiter.consume(SIGNUP_LIMIT_BUCKET, ClientIpResolver.rateLimitKey(clientIp.resolve(servletRequest)),
+                MAX_SIGNUPS_PER_IP, SIGNUP_WINDOW);
         if (users.findByEmail(r.email()).isPresent())
             throw new IllegalArgumentException("이미 가입된 이메일입니다.");
         User u = users.save(new User(r.email(), encoder.encode(r.password())));

@@ -28,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "jwt.secret=feedback-api-test-only-key-do-not-deploy-0123456789",
         "spring.datasource.username=petroad_test", "spring.datasource.password=test-only-password",
         "spring.flyway.schemas=feedback_api_test", "spring.flyway.default-schema=feedback_api_test",
-        "spring.jpa.properties.hibernate.default_schema=feedback_api_test"
+        "spring.jpa.properties.hibernate.default_schema=feedback_api_test",
+        "spring.datasource.hikari.schema=feedback_api_test"
 })
 @AutoConfigureMockMvc
 class RefreshTokenApiTest {
@@ -44,7 +45,11 @@ class RefreshTokenApiTest {
     @MockBean Clock clock;
     private final Instant now = Instant.parse("2026-11-05T00:00:00Z");
 
-    @BeforeEach void time() { when(clock.instant()).thenReturn(now); }
+    @BeforeEach void time() {
+        when(clock.instant()).thenReturn(now);
+        // 시각이 고정돼 있어 테스트마다 가입 횟수 기록을 비우지 않으면 가입 제한에 걸린다.
+        jdbc.update("delete from feedback_api_test.rate_limit_hits");
+    }
 
     private JsonNode login() throws Exception {
         String email = UUID.randomUUID() + "@example.com";

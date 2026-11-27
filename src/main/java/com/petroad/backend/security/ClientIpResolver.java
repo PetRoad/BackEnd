@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -22,6 +23,13 @@ public class ClientIpResolver {
         if (!trustedProxies.contains(peer)) return peer;
         String forwarded = request.getHeader("CF-Connecting-IP");
         return forwarded == null ? peer : normalize(forwarded);
+    }
+
+    /** 횟수 제한에 쓸 키. IPv6는 한 사용자가 여러 주소를 바꿔 쓸 수 있어 앞 64비트(/64)로 묶는다. */
+    public static String rateLimitKey(String address) {
+        String normalized = normalize(address);
+        if (!normalized.contains(":")) return normalized;
+        return String.join(":", Arrays.copyOf(normalized.split(":"), 4)) + "::/64";
     }
 
     private static String normalize(String address) {
