@@ -10,8 +10,8 @@ import static org.assertj.core.api.Assertions.*;
 
 class ClientIpResolverTest {
     private ClientIpResolver resolver(List<String> proxies) {
-        return new ClientIpResolver(new LoginThrottleProperties(5, Duration.ofMinutes(15), Duration.ofMinutes(15),
-                30, Duration.ofMinutes(1), 100, proxies));
+        return new ClientIpResolver(new LoginThrottleProperties(5, Duration.ofMinutes(15), 50, Duration.ofHours(1),
+                30, Duration.ofMinutes(1), proxies));
     }
 
     @Test void untrustedPeerCannotSpoofAnyForwardedHeader() {

@@ -30,10 +30,10 @@ security:
   login:
     max-failures: ${LOGIN_MAX_FAILURES:5}
     failure-window: ${LOGIN_FAILURE_WINDOW:15m}
-    lock-duration: ${LOGIN_LOCK_DURATION:15m}
+    account-max-failures: ${LOGIN_ACCOUNT_MAX_FAILURES:50}
+    account-failure-window: ${LOGIN_ACCOUNT_FAILURE_WINDOW:1h}
     ip-max-attempts: ${LOGIN_IP_MAX_ATTEMPTS:30}
     ip-window: ${LOGIN_IP_WINDOW:1m}
-    max-tracked-entries: ${LOGIN_MAX_TRACKED_ENTRIES:10000}
     trusted-proxy-addresses: ${LOGIN_TRUSTED_PROXY_ADDRESSES:}
 springdoc:
   api-docs:

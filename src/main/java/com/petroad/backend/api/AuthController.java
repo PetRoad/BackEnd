@@ -84,7 +84,7 @@ public class AuthController {
         return new SignupResponse(u.getId(), u.getEmail());
     }
 
-    @Operation(summary = "로그인", description = "기본값: 계정별 최근 15분에 실패 5회 이후 15분 제한, IP당 1분에 요청 30회. 기준은 서버 설정으로 조절합니다.")
+    @Operation(summary = "로그인", description = "기본값: 계정+IP별 최근 15분에 실패 5회, 계정 전체 최근 1시간에 실패 50회, IP별 최근 1분에 요청 30회. IPv6는 /64로 묶습니다. 이력은 DB에 유지하며 가장 오래된 기록이 조회 창을 벗어나면 다시 시도할 수 있습니다. 성공하면 해당 계정+IP의 실패만 초기화합니다. 기준은 서버 설정으로 조절합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "로그인 성공"),
             @ApiResponse(responseCode = "400", description = "입력값 검증 실패 (비밀번호 72바이트 초과 포함)",

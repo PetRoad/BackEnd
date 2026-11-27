@@ -1,118 +1,310 @@
 package com.petroad.backend.security;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.petroad.backend.domain.User;
+import com.petroad.backend.repository.UserRepository;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.anyString;
 
+@EnabledIfEnvironmentVariable(named = "PETROAD_DB_TEST_URL", matches = ".+")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@SpringBootTest(properties = {
+        "jwt.secret=login-throttle-test-only-key-do-not-deploy-0123456789",
+        "spring.datasource.username=petroad_test", "spring.datasource.password=test-only-password",
+        "spring.flyway.schemas=login_throttle_test", "spring.flyway.default-schema=login_throttle_test",
+        "spring.jpa.properties.hibernate.default_schema=login_throttle_test",
+        "spring.datasource.hikari.schema=login_throttle_test"
+})
 class LoginThrottleTest {
-    private final MutableClock clock = new MutableClock();
-    static LoginThrottleProperties settings(int failures, int ipAttempts, int capacity) {
-        return new LoginThrottleProperties(failures, Duration.ofMinutes(15), Duration.ofMinutes(15),
-                ipAttempts, Duration.ofMinutes(1), capacity, List.of());
+    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
+        properties.add("spring.datasource.url", () -> System.getenv("PETROAD_DB_TEST_URL"));
+    }
+    @Autowired RateLimiter limiter;
+    @Autowired PlatformTransactionManager transactions;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired UserRepository users;
+    @Autowired RefreshTokenService refreshTokens;
+    @MockBean Clock clock;
+    private final Instant now = Instant.parse("2026-11-27T00:00:00Z");
+    private LoginThrottle throttle;
+
+    static LoginThrottleProperties settings(int failures, int ipAttempts, int accountFailures) {
+        return new LoginThrottleProperties(failures, Duration.ofMinutes(15), accountFailures, Duration.ofHours(1),
+                ipAttempts, Duration.ofMinutes(1), List.of());
     }
 
-    @Test void accountFailuresApplyAcrossIpsAndExpireWithoutPermanentLock() {
-        LoginThrottle throttle = new LoginThrottle(settings(5, 30, 100), clock);
-        for (int n = 0; n < 5; n++) {
-            try (var attempt = throttle.begin("user@example.com", "192.0.2." + n)) { attempt.failed(); }
+    @BeforeEach void setup() {
+        when(clock.instant()).thenReturn(now);
+        jdbc.update("DELETE FROM rate_limit_hits");
+        throttle = fresh(settings(5, 30, 50));
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    }
+
+    private LoginThrottle fresh(LoginThrottleProperties properties) {
+        return new LoginThrottle(properties, limiter, transactions);
+    }
+
+    private void fail(LoginThrottle service, String email, String ip) {
+        try (var attempt = service.begin(email, ip)) { attempt.failed(); }
+    }
+
+    private void succeed(LoginThrottle service, String email, String ip) {
+        try (var attempt = service.begin(email, ip)) { attempt.succeeded(); }
+    }
+
+    private void beginAndClose(LoginThrottle service, String email, String ip) {
+        try (var ignored = service.begin(email, ip)) { }
+    }
+
+    private long count(String bucket) {
+        return jdbc.queryForObject("SELECT count(*) FROM rate_limit_hits WHERE bucket=?", Long.class, bucket);
+    }
+
+    @Test void fiveFailuresBlockOnlyThatPairAndExpireAsTheOldestFailureLeavesTheWindow() {
+        for (int n=0;n<5;n++) fail(throttle,"user@example.com","192.0.2.1");
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","192.0.2.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class, e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(900));
+        succeed(throttle,"user@example.com","192.0.2.2");
+        assertThat(count("login-account-ip")).isEqualTo(5);
+        when(clock.instant()).thenReturn(now.plusSeconds(60));
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","192.0.2.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class, e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(840));
+        when(clock.instant()).thenReturn(now.plus(Duration.ofMinutes(15)));
+        succeed(throttle,"user@example.com","192.0.2.1");
+        assertThat(count("login-account-ip")).isZero();
+        assertThat(count("login-account")).isEqualTo(5);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    }
+
+    @Test void fiftyFailuresAcrossIpsBlockTheAccountForTheRemainingHour() {
+        for (int n=0;n<50;n++) fail(throttle,"user@example.com","192.0.2."+(n/5+1));
+        assertThat(count("login-account")).isEqualTo(50);
+        when(clock.instant()).thenReturn(now.plus(Duration.ofMinutes(30)));
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","198.51.100.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class, e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(1800));
+        succeed(throttle,"other@example.com","198.51.100.1");
+        when(clock.instant()).thenReturn(now.plus(Duration.ofHours(1)));
+        succeed(throttle,"user@example.com","198.51.100.1");
+    }
+
+    @Test void successClearsOnlyItsPairAndLeavesOtherIpsAndAccountHistory() {
+        for (int n=0;n<4;n++) {
+            fail(throttle,"user@example.com","192.0.2.1");
+            fail(throttle,"user@example.com","192.0.2.2");
         }
-        assertThatThrownBy(() -> throttle.begin("user@example.com", "192.0.2.99"))
-                .isInstanceOfSatisfying(LoginRateLimitException.class,
-                        error -> assertThat(error.getRetryAfterSeconds()).isEqualTo(900));
-        clock.advance(Duration.ofMinutes(1));
-        assertThatThrownBy(() -> throttle.begin("user@example.com", "192.0.2.99"))
-                .isInstanceOfSatisfying(LoginRateLimitException.class,
-                        error -> assertThat(error.getRetryAfterSeconds()).isEqualTo(840));
-        clock.advance(Duration.ofMinutes(14));
-        try (var attempt = throttle.begin("user@example.com", "192.0.2.99")) { attempt.succeeded(); }
-    }
-
-    @Test void ipAttemptsApplyAcrossAccountsIncludingSuccessfulLogins() {
-        LoginThrottle throttle = new LoginThrottle(settings(5, 2, 100), clock);
-        for (int n = 0; n < 2; n++) {
-            try (var attempt = throttle.begin("user" + n, "192.0.2.1")) { attempt.succeeded(); }
+        succeed(throttle,"user@example.com","192.0.2.1");
+        assertThat(count("login-account-ip")).isEqualTo(4);
+        assertThat(count("login-account")).isEqualTo(8);
+        for (int n=0;n<5;n++) fail(throttle,"user@example.com","192.0.2.1");
+        fail(throttle,"user@example.com","192.0.2.2");
+        for (String ip:List.of("192.0.2.1","192.0.2.2")) {
+            assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com",ip)).isInstanceOf(LoginRateLimitException.class);
         }
-        assertThatThrownBy(() -> throttle.begin("another-user", "192.0.2.1"))
-                .isInstanceOfSatisfying(LoginRateLimitException.class,
-                        error -> assertThat(error.getRetryAfterSeconds()).isEqualTo(60));
-        clock.advance(Duration.ofMinutes(1));
-        try (var attempt = throttle.begin("another-user", "192.0.2.1")) { attempt.succeeded(); }
     }
 
-    @Test void successfulLoginResetsFailuresButAnInfrastructureErrorDoesNot() {
-        LoginThrottle throttle = new LoginThrottle(settings(2, 30, 100), clock);
-        try (var attempt = throttle.begin("user", "192.0.2.1")) { attempt.failed(); }
-        try (var attempt = throttle.begin("user", "192.0.2.1")) { attempt.succeeded(); }
-        try (var attempt = throttle.begin("user", "192.0.2.1")) { attempt.failed(); }
-        // Simulate a DB/JWT error: release only the in-flight reservation.
-        try (var ignored = throttle.begin("user", "192.0.2.1")) {}
-        try (var attempt = throttle.begin("user", "192.0.2.1")) { attempt.failed(); }
-        assertThatThrownBy(() -> throttle.begin("user", "192.0.2.2"))
+    @Test void ipRequestsIncludeSuccessesAndBlockedAccountsAndExpireAfterOneMinute() {
+        for (int n=0;n<30;n++) succeed(throttle,"user"+n+"@example.com","192.0.2.1");
+        assertThatThrownBy(() -> beginAndClose(throttle,"other@example.com","192.0.2.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class, e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(60));
+        assertThat(count("login-ip")).isEqualTo(30);
+        assertThat(count("login-account")).isZero();
+        when(clock.instant()).thenReturn(now.plusSeconds(60));
+        succeed(throttle,"other@example.com","192.0.2.1");
+    }
+
+    @Test void ipv6AddressesInTheSame64BitPrefixShareThePairLimit() {
+        for (int n=0;n<5;n++) fail(throttle,"user@example.com","2001:db8:1:2::"+(n+1));
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","2001:db8:1:2:ffff:ffff:ffff:ffff"))
+                .isInstanceOf(LoginRateLimitException.class);
+        succeed(throttle,"user@example.com","2001:db8:1:3::1");
+    }
+
+    @Test void ipv6AddressesInTheSamePrefixAlsoShareTheIpRequestLimit() {
+        LoginThrottle small = fresh(settings(5,2,50));
+        succeed(small,"one@example.com","2001:db8:1:2::1");
+        succeed(small,"two@example.com","2001:db8:1:2::2");
+        assertThatThrownBy(() -> beginAndClose(small,"three@example.com","2001:db8:1:2::3"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class, e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(60));
+        succeed(small,"three@example.com","2001:db8:1:3::1");
+    }
+
+    @Test void infrastructureErrorReleasesTheLockWithoutRecordingOrClearingPasswordFailures() {
+        for (int n=0;n<4;n++) fail(throttle,"user@example.com","192.0.2.1");
+        beginAndClose(throttle,"user@example.com","192.0.2.1");
+        assertThat(count("login-account-ip")).isEqualTo(4);
+        assertThat(count("login-account")).isEqualTo(4);
+        assertThat(count("login-ip")).isEqualTo(5);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        fail(throttle,"user@example.com","192.0.2.1");
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","192.0.2.1")).isInstanceOf(LoginRateLimitException.class);
+        assertThat(count("login-ip")).isEqualTo(7);
+    }
+
+    @Test void recreatingServicesPreservesPairAccountAndIpCounters() {
+        for (int n=0;n<5;n++) fail(throttle,"user@example.com","192.0.2.1");
+        LoginThrottle restarted = fresh(settings(5,30,50));
+        assertThatThrownBy(() -> beginAndClose(restarted,"user@example.com","192.0.2.1")).isInstanceOf(LoginRateLimitException.class);
+        assertThatThrownBy(() -> beginAndClose(fresh(settings(5,30,5)),"user@example.com","192.0.2.2"))
+                .isInstanceOf(LoginRateLimitException.class);
+        assertThatThrownBy(() -> beginAndClose(fresh(settings(5,2,50)),"other@example.com","192.0.2.1"))
                 .isInstanceOf(LoginRateLimitException.class);
     }
 
-    @Test void failuresUseASlidingObservationWindow() {
-        LoginThrottle throttle = new LoginThrottle(settings(2, 30, 100), clock);
-        try (var ignored = throttle.begin("user", "ip")) {}
-        clock.advance(Duration.ofMinutes(14));
-        try (var attempt = throttle.begin("user", "ip")) { attempt.failed(); }
-        clock.advance(Duration.ofMinutes(2));
-        try (var attempt = throttle.begin("user", "ip")) { attempt.failed(); }
-        assertThatThrownBy(() -> throttle.begin("user", "other-ip")).isInstanceOf(LoginRateLimitException.class);
+    @Test void keysPreserveEmailCaseAndDoNotStoreTheOriginalEmail() {
+        for (int n=0;n<5;n++) fail(throttle,"User@example.com","192.0.2.1");
+        succeed(throttle,"user@example.com","192.0.2.1");
+        assertThat(jdbc.queryForList("SELECT key FROM rate_limit_hits WHERE bucket='login-account'",String.class))
+                .hasSize(5).allMatch(key -> key.matches("[0-9a-f]{64}"));
+        assertThatThrownBy(() -> beginAndClose(throttle,"User@example.com","192.0.2.1")).isInstanceOf(LoginRateLimitException.class);
     }
 
-    @Test void oldFailuresExpireBeforeThreshold() {
-        LoginThrottle throttle = new LoginThrottle(settings(2, 30, 100), clock);
-        try (var attempt = throttle.begin("user", "ip")) { attempt.failed(); }
-        clock.advance(Duration.ofMinutes(15));
-        try (var attempt = throttle.begin("user", "ip")) { attempt.failed(); }
-        try (var attempt = throttle.begin("user", "ip")) { attempt.succeeded(); }
-    }
-
-    @Test void concurrentRequestsCannotExceedAccountReservations() throws Exception {
-        LoginThrottle throttle = new LoginThrottle(settings(5, 100, 100), clock);
-        CountDownLatch ready = new CountDownLatch(20), start = new CountDownLatch(1), release = new CountDownLatch(1);
-        AtomicInteger allowed = new AtomicInteger();
-        ExecutorService executor = Executors.newFixedThreadPool(20);
+    @Test void parallelRequestsAcrossInstancesCannotExceedThePairLimit() throws Exception {
+        int requests=8;
+        ExecutorService executor=Executors.newFixedThreadPool(requests);
+        CountDownLatch start=new CountDownLatch(1);
+        List<Future<Boolean>> futures=new ArrayList<>();
         try {
-            List<Future<?>> futures = new ArrayList<>();
-            for (int n = 0; n < 20; n++) {
-                String ip = "ip" + n;
+            for (int n=0;n<requests;n++) {
+                LoginThrottle instance=fresh(settings(5,100,50));
                 futures.add(executor.submit(() -> {
-                    ready.countDown();
-                    try {
-                        start.await();
-                        try (var attempt = throttle.begin("user", ip)) {
-                            allowed.incrementAndGet();
-                            release.await();
-                            attempt.failed();
-                        }
-                    } catch (LoginRateLimitException expected) { }
-                    catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new RuntimeException(e); }
+                    start.await();
+                    try { fail(instance,"user@example.com","192.0.2.1");return true; }
+                    catch(LoginRateLimitException e) { return false; }
                 }));
             }
-            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
-            // A barrier task would deadlock the occupied pool; wait until every begin has resolved instead.
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (allowed.get() < 5 && System.nanoTime() < deadline) Thread.onSpinWait();
-            release.countDown();
-            for (Future<?> future : futures) future.get(5, TimeUnit.SECONDS);
-            assertThat(allowed.get()).isEqualTo(5);
-        } finally { start.countDown(); release.countDown(); executor.shutdownNow(); }
-        assertThatThrownBy(() -> throttle.begin("user", "new-ip")).isInstanceOf(LoginRateLimitException.class);
+            int allowed=0;
+            for (Future<Boolean> future:futures) if(future.get(10,TimeUnit.SECONDS)) allowed++;
+            assertThat(allowed).isEqualTo(5);
+            assertThat(count("login-account-ip")).isEqualTo(5);
+            assertThat(count("login-account")).isEqualTo(5);
+            assertThat(count("login-ip")).isEqualTo(8);
+        } finally {start.countDown();executor.shutdownNow();}
     }
 
-    @Test void fullTrackingCapacityDoesNotEvictLockedAccountsAndRecoversAfterExpiry() {
-        LoginThrottle throttle = new LoginThrottle(settings(1, 30, 1), clock);
-        try (var attempt = throttle.begin("locked-user", "ip")) { attempt.failed(); }
-        assertThatThrownBy(() -> throttle.begin("another-user", "ip")).isInstanceOf(LoginRateLimitException.class);
-        assertThatThrownBy(() -> throttle.begin("locked-user", "ip")).isInstanceOf(LoginRateLimitException.class);
-        clock.advance(Duration.ofMinutes(15));
-        try (var attempt = throttle.begin("another-user", "ip")) { attempt.succeeded(); }
+    @Test void parallelRequestsAcrossDifferentIpsCannotExceedTheAccountLimit() throws Exception {
+        ExecutorService executor=Executors.newFixedThreadPool(8);
+        CountDownLatch start=new CountDownLatch(1);
+        List<Future<Boolean>> futures=new ArrayList<>();
+        try {
+            for (int n=0;n<8;n++) {
+                String ip="192.0.2."+(n+1);
+                LoginThrottle instance=fresh(settings(5,100,3));
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    try {fail(instance,"user@example.com",ip);return true;}
+                    catch(LoginRateLimitException e){return false;}
+                }));
+            }
+            start.countDown();
+            int allowed=0;
+            for (Future<Boolean> future:futures) if(future.get(10,TimeUnit.SECONDS)) allowed++;
+            assertThat(allowed).isEqualTo(3);
+            assertThat(count("login-account")).isEqualTo(3);
+        } finally {start.countDown();executor.shutdownNow();}
+    }
+
+    @Test void failureWriteErrorRollsBackBothCountersAndReleasesTheLock() {
+        for (int n=0;n<4;n++) fail(throttle,"user@example.com","192.0.2.1");
+        RateLimiter broken = mock(RateLimiter.class, org.mockito.AdditionalAnswers.delegatesTo(limiter));
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("simulated DB failure"))
+                .when(broken).hit(org.mockito.ArgumentMatchers.eq("login-account"),anyString());
+        LoginThrottle service = new LoginThrottle(settings(5,30,50),broken,transactions);
+        assertThatThrownBy(() -> fail(service,"user@example.com","192.0.2.1"))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        // 계정+IP 기록을 쓴 다음 계정 전체 기록에서 실패해도 둘 다 롤백한다.
+        assertThat(count("login-account-ip")).isEqualTo(4);
+        assertThat(count("login-account")).isEqualTo(4);
+        assertThat(count("login-ip")).isEqualTo(5);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        fail(throttle,"user@example.com","192.0.2.1");
+        assertThat(count("login-account-ip")).isEqualTo(5);
+    }
+
+    @Test void resetErrorRollsBackIssuedTokensAndRestoresThePreviousFailures() {
+        User user = users.save(new User(UUID.randomUUID()+"@example.com","fixture-hash"));
+        for (int n=0;n<4;n++) fail(throttle,user.getEmail(),"192.0.2.1");
+        RateLimiter broken = mock(RateLimiter.class, org.mockito.AdditionalAnswers.delegatesTo(limiter));
+        doAnswer(invocation -> {
+            limiter.reset(invocation.getArgument(0),invocation.getArgument(1));
+            throw new org.springframework.dao.DataAccessResourceFailureException("simulated failure after reset");
+        }).when(broken).reset(anyString(),anyString());
+        LoginThrottle service = new LoginThrottle(settings(5,30,50),broken,transactions);
+        assertThatThrownBy(() -> {
+            try (var attempt = service.begin(user.getEmail(),"192.0.2.1")) {
+                refreshTokens.issue(user);
+                attempt.succeeded();
+            }
+        }).isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_session WHERE user_id=?",Long.class,user.getId())).isZero();
+        assertThat(count("login-account-ip")).isEqualTo(4);
+        assertThat(count("login-account")).isEqualTo(4);
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        succeed(throttle,user.getEmail(),"192.0.2.1");
+        assertThat(count("login-account-ip")).isZero();
+    }
+
+    @Test void anUnfinishedAuthenticationCannotBeOvertakenByAnotherInstance() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch locked = new CountDownLatch(1), release = new CountDownLatch(1), secondStarted = new CountDownLatch(1);
+        LoginThrottle first = fresh(settings(1,30,50)), second = fresh(settings(1,30,50));
+        try {
+            Future<?> holding = executor.submit(() -> {
+                try (var attempt = first.begin("user@example.com","192.0.2.1")) {
+                    locked.countDown();
+                    if (!release.await(5,TimeUnit.SECONDS)) throw new IllegalStateException("test release timed out");
+                    attempt.failed();
+                } catch (InterruptedException e) { Thread.currentThread().interrupt();throw new IllegalStateException(e); }
+            });
+            assertThat(locked.await(5,TimeUnit.SECONDS)).isTrue();
+            Future<Boolean> waiting = executor.submit(() -> {
+                secondStarted.countDown();
+                try { beginAndClose(second,"user@example.com","192.0.2.1");return true; }
+                catch (LoginRateLimitException e) { return false; }
+            });
+            assertThat(secondStarted.await(5,TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> waiting.get(200,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            holding.get(5,TimeUnit.SECONDS);
+            assertThat(waiting.get(5,TimeUnit.SECONDS)).isFalse();
+            assertThat(count("login-account-ip")).isEqualTo(1);
+        } finally { release.countDown();executor.shutdownNow(); }
+    }
+
+    @Test void retryAfterUsesTheOldestFailureInsteadOfStartingAnotherFixedLock() {
+        for (int n=0;n<5;n++) {
+            when(clock.instant()).thenReturn(now.plus(Duration.ofMinutes(n)));
+            fail(throttle,"user@example.com","192.0.2.1");
+        }
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","192.0.2.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class,e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(660));
+        when(clock.instant()).thenReturn(now.plus(Duration.ofMinutes(15)));
+        fail(throttle,"user@example.com","192.0.2.1");
+        assertThatThrownBy(() -> beginAndClose(throttle,"user@example.com","192.0.2.1"))
+                .isInstanceOfSatisfying(LoginRateLimitException.class,e -> assertThat(e.getRetryAfterSeconds()).isEqualTo(60));
     }
 }

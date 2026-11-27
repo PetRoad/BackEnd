@@ -31,6 +31,7 @@ class OpenApiSecurityTest {
     @MockBean private RefreshSessionRepository refreshSessions;
     @MockBean private UploadedImageRepository uploadedImages;
     @MockBean private javax.sql.DataSource dataSource;
+    @MockBean private org.springframework.transaction.PlatformTransactionManager transactions;
     @MockBean private RateLimiter rateLimiter;
 
     @Test void bootBindsDefaultSecuritySettingsAndPublishesPasswordErrorsAndRetryAfter() throws Exception {
@@ -40,6 +41,8 @@ class OpenApiSecurityTest {
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['400']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/login'].post.description").value(org.hamcrest.Matchers.containsString("계정+IP")))
+                .andExpect(jsonPath("$.paths['/api/auth/login'].post.description").value(org.hamcrest.Matchers.containsString("50회")))
                 .andExpect(jsonPath("$.paths['/api/auth/signup'].post.responses['429'].headers['Retry-After']").exists())
                 .andExpect(jsonPath("$.paths['/api/uploads'].post.responses['200'].content").exists())
                 .andExpect(jsonPath("$.paths['/api/uploads'].post.responses['429'].headers['Retry-After']").exists())
