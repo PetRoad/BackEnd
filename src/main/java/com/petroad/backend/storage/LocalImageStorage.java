@@ -45,4 +45,15 @@ public class LocalImageStorage implements ImageStorage {
         String publicId = folder + "/" + filename;
         return new StoredImage(publicId, baseUrl + "/uploads/" + publicId);
     }
+
+    @Override
+    public void delete(String publicId) {
+        Path target = root.resolve(publicId).normalize();
+        if (!target.startsWith(root) || target.equals(root)) throw new IllegalArgumentException("잘못된 저장 경로입니다.");
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            throw new UncheckedIOException("이미지 삭제에 실패했습니다.", e);
+        }
+    }
 }

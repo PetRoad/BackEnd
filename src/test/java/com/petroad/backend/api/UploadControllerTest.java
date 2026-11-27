@@ -78,6 +78,7 @@ class UploadControllerTest {
                         .header("Authorization", "Bearer valid")))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
         verify(rateLimiter).cancel(12L);
+        verify(storage).delete("petroad/walk_photo/a");
     }
 
     @Test

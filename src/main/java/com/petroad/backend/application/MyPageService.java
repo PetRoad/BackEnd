@@ -86,7 +86,10 @@ public class MyPageService {
  @Transactional
  public void deleteWalk(Long userId,Long id) {
   WalkLog log=walks.findByIdAndUserId(id,userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"산책 기록을 찾을 수 없습니다."));
+  List<String> images=new ArrayList<>(log.getPhotos());
+  if (log.getCover()!=null) images.add(log.getCover());
   walks.delete(log);
+  uploadedImages.releaseUnused(userId,images);
  }
  public List<CourseDetail> courses(Long userId,boolean likedOnly) {
   Set<Long> likedIds=new HashSet<>();
@@ -110,7 +113,11 @@ public class MyPageService {
   if (profileImage != null) uploadedImages.requireOwned(userId, profileImage, "profileImage");
   User user=users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,"로그인이 필요합니다."));
   Dog d=dogs.findByUserId(userId).orElseGet(() -> new Dog(user,name,breed,size,birthDate,profileImage));
-  d.update(name,breed,size,birthDate,profileImage);return dog(dogs.save(d));
+  String previousImage=d.getProfileImage();
+  d.update(name,breed,size,birthDate,profileImage);
+  DogProfile saved=dog(dogs.save(d));
+  if (previousImage!=null && !previousImage.equals(profileImage)) uploadedImages.releaseUnused(userId,List.of(previousImage));
+  return saved;
  }
  private DogProfile dog(Dog d) {return new DogProfile(d.getName(),d.getBreed(),d.getSize(),d.getBirthDate(),d.getProfileImage());}
  private WalkDetail walk(WalkLog w) {

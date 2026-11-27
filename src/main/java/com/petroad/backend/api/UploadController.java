@@ -63,10 +63,24 @@ public class UploadController {
         // 기존: return new UploadResponse("test://" + ...);
         try {
             ImageStorage.StoredImage stored = storage.save(purpose.name().toLowerCase(), name, file);
-            uploadedImages.record(userId, stored);
+            recordOrDiscard(userId, stored);
             return new UploadResponse(stored.url());
         } catch (RuntimeException failure) {
             cancelUploadRecord(hitId, failure);
+            throw failure;
+        }
+    }
+
+    // 기록하지 못한 사진은 아무도 쓸 수 없으므로 파일도 지운다.
+    private void recordOrDiscard(Long userId, ImageStorage.StoredImage stored) {
+        try {
+            uploadedImages.record(userId, stored);
+        } catch (RuntimeException failure) {
+            try {
+                storage.delete(stored.publicId());
+            } catch (RuntimeException deleteFailure) {
+                failure.addSuppressed(deleteFailure);
+            }
             throw failure;
         }
     }

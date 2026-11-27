@@ -40,7 +40,8 @@ class InputValidationWebTest {
     @BeforeEach void setup() {
         mvc = MockMvcBuilders.standaloneSetup(
                         new CourseController(courses, users, mock(CourseLikeRepository.class), recommendations,
-                                myPage, new UploadedImageService(new LocalImageStorage("target/test-images", ""), uploadRecords)),
+                                myPage, new UploadedImageService(new LocalImageStorage("target/test-images", ""), uploadRecords,
+                                        mock(org.springframework.context.ApplicationEventPublisher.class))),
                         new MyPageController(myPage), new UserController(users))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
     }

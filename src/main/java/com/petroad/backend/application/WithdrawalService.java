@@ -30,6 +30,7 @@ public class WithdrawalService {
     private final WalkLogRepository walkLogs;
     private final PasswordEncoder encoder;
     private final RateLimiter rateLimiter;
+    private final UploadedImageService uploadedImages;
 
     // 비밀번호 확인은 데이터를 바꾸기 전에 해야 한다. 불일치 때는 실패 기록만 커밋된다.
     @Transactional(noRollbackFor = WrongPasswordException.class)
@@ -43,6 +44,9 @@ public class WithdrawalService {
             rateLimiter.hit(LIMIT_BUCKET, limitKey);
             throw new WrongPasswordException();
         }
+
+        // 탈퇴 중에 끝난 업로드의 기록이 정리 대상에서 빠지지 않도록 사용자 행을 먼저 잠근다.
+        users.lockForDeletion(userId);
 
         // 1. 내가 누른 좋아요 삭제 (남의 코스는 좋아요 수를 1 줄임)
         var myLikes = likes.findAllByUserIdOrderByIdDesc(userId);
@@ -60,8 +64,13 @@ public class WithdrawalService {
         // DB 외래 키가 받은 좋아요를 삭제하고 다른 사용자의 산책일지를 보존합니다.
         courses.deleteAll(courses.findAllByUserIdOrderByIdDesc(userId));
 
-        // 4. 반려견, 5. 사용자 삭제
+        // 4. 반려견 삭제
         dogs.findByUserId(userId).ifPresent(dogs::delete);
+
+        // 5. 올린 사진 정리. 업로드 기록은 사용자와 함께 지워지므로 그 전에 목록을 읽는다. 파일은 커밋 뒤에 지운다.
+        uploadedImages.releaseAllUnused(userId);
+
+        // 6. 사용자 삭제
         users.delete(user);
     }
 }

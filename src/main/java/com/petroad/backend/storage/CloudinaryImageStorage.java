@@ -50,6 +50,21 @@ public class CloudinaryImageStorage implements ImageStorage {
         }
     }
 
+    @Override
+    public void delete(String publicId) {
+        try {
+            // invalidate: CDN에 남은 사본도 지운다.
+            Map<?, ?> result = cloudinary.uploader().destroy(publicId, ObjectUtils.asMap(
+                    "resource_type", "image", "invalidate", true));
+            Object outcome = result.get("result");
+            if (!"ok".equals(outcome) && !"not found".equals(outcome)) {
+                throw new IllegalStateException("이미지 저장소가 삭제하지 못했습니다: " + outcome);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("이미지 삭제에 실패했습니다.", e);
+        }
+    }
+
     private static String stripExtension(String name) {
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;

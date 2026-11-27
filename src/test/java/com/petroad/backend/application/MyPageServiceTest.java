@@ -26,7 +26,7 @@ class MyPageServiceTest {
  MyPageService service;
 
  @BeforeEach void setup() {
-  service=new MyPageService(users,dogs,walks,courses,likes,new UploadedImageService(images,uploadRecords));
+  service=new MyPageService(users,dogs,walks,courses,likes,new UploadedImageService(images,uploadRecords,mock(org.springframework.context.ApplicationEventPublisher.class)));
  }
 
  @Test void aggregatesOnlyAuthenticatedUsersRecordsAndConvertsKilometers() {

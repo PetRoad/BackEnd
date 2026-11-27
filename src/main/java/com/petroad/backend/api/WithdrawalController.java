@@ -22,7 +22,7 @@ public class WithdrawalController {
 
     public record WithdrawRequest(@NotBlank @MaxPasswordBytes String password) {}
 
-    @Operation(summary = "회원 탈퇴", description = "비밀번호를 확인한 뒤 계정과 내 데이터를 삭제합니다.")
+    @Operation(summary = "회원 탈퇴", description = "비밀번호를 확인한 뒤 계정과 내 데이터를 삭제합니다. 업로드한 사진 파일도 저장하지 않은 것까지 저장소에서 삭제합니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponse(responseCode = "204", description = "탈퇴 완료")
     @ApiResponse(responseCode = "400", description = "비밀번호 불일치 또는 입력값 오류")
