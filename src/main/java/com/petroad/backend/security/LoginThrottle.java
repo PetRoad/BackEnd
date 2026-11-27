@@ -1,124 +1,115 @@
 package com.petroad.backend.security;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 @Component
 public class LoginThrottle {
+    private static final String IP = "login-ip";
+    private static final String ACCOUNT = "login-account";
+    private static final String ACCOUNT_IP = "login-account-ip";
+
     private final LoginThrottleProperties properties;
-    private final Clock clock;
-    private final Map<String, Account> accounts = new HashMap<>();
-    private final Map<String, IpWindow> ips = new HashMap<>();
-    private Instant nextCleanup = Instant.MIN;
+    private final RateLimiter limiter;
+    private final PlatformTransactionManager transactions;
+    private final TransactionTemplate ipTransactions;
 
-    @Autowired
-    public LoginThrottle(LoginThrottleProperties properties) { this(properties, Clock.systemUTC()); }
-
-    LoginThrottle(LoginThrottleProperties properties, Clock clock) {
+    public LoginThrottle(LoginThrottleProperties properties, RateLimiter limiter,
+                         PlatformTransactionManager transactions) {
         this.properties = properties;
-        this.clock = clock;
+        this.limiter = limiter;
+        this.transactions = transactions;
+        this.ipTransactions = new TransactionTemplate(transactions);
+        this.ipTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    public synchronized Attempt begin(String email, String ip) {
-        Instant now = clock.instant();
-        cleanup(now);
-        IpWindow window = ips.get(ip);
-        if (window == null || !now.isBefore(window.expires)) {
-            if (window == null && ips.size() >= properties.maxTrackedEntries()) throw new LoginRateLimitException(60);
-            window = new IpWindow(now.plus(properties.ipWindow()));
-            ips.put(ip, window);
-        }
-        if (window.attempts >= properties.ipMaxAttempts()) throw limited(now, window.expires);
-        window.attempts++;
+    /** 반드시 요청 스레드의 try-with-resources 안에서 사용한다. */
+    public Attempt begin(String email, String ip) {
+        String ipKey = ClientIpResolver.rateLimitKey(ip);
+        // 계정 잠금으로 거절된 요청과 성공한 로그인도 IP 요청 수에 포함한다.
+        // 인증 트랜잭션이 롤백돼도 이 기록은 남는다.
+        ipTransactions.executeWithoutResult(status ->
+                limiter.consume(IP, ipKey, properties.ipMaxAttempts(), properties.ipWindow()));
 
-        // Keep account keys identical to the repository lookup; do not lowercase only the limiter key.
-        Account account = accounts.get(email);
-        if (account == null) {
-            if (accounts.size() >= properties.maxTrackedEntries()) throw new LoginRateLimitException(60);
-            account = new Account(now.plus(properties.failureWindow()));
-            accounts.put(email, account);
-        }
-        if (account.lockedUntil != null && now.isBefore(account.lockedUntil)) throw limited(now, account.lockedUntil);
-        if (account.lockedUntil != null) {
-            account.failures.clear();
-            account.lockedUntil = null;
-        }
-        pruneFailures(account, now);
-        // Reserve a slot before BCrypt/DB work so parallel requests cannot bypass the threshold.
-        if (account.failures.size() + account.pending >= properties.maxFailures()) throw new LoginRateLimitException(1);
-        account.expires = now.plus(properties.failureWindow());
-        account.pending++;
-        return new Attempt(account);
-    }
-
-    private synchronized void finish(Attempt attempt, boolean failed) {
-        if (attempt.finished) return;
-        attempt.finished = true;
-        Account account = attempt.account;
-        account.pending--;
-        if (failed) {
-            Instant now = clock.instant();
-            pruneFailures(account, now);
-            account.failures.addLast(now);
-            account.expires = now.plus(properties.failureWindow());
-            if (account.failures.size() >= properties.maxFailures() && account.lockedUntil == null) {
-                account.lockedUntil = now.plus(properties.lockDuration());
-            }
-        } else if (account.lockedUntil == null) {
-            account.failures.clear();
+        // 조회와 같은 대소문자를 유지하고, 이메일 원문 대신 고정 길이 해시를 저장한다.
+        String accountKey = accountKey(email);
+        String pairKey = accountKey + "|" + ipKey;
+        var definition = new DefaultTransactionDefinition(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        TransactionStatus transaction = transactions.getTransaction(definition);
+        try {
+            // 항상 계정 -> 계정+IP 순으로 잠근다. 비밀번호 판단이 끝날 때까지 잠금을
+            // 유지하므로 여러 서버/동시 요청도 아직 확정되지 않은 실패를 추월하지 못한다.
+            limiter.check(ACCOUNT, accountKey, properties.accountMaxFailures(), properties.accountFailureWindow());
+            limiter.check(ACCOUNT_IP, pairKey, properties.maxFailures(), properties.failureWindow());
+            return new Attempt(transaction, accountKey, pairKey);
+        } catch (RuntimeException | Error e) {
+            if (!transaction.isCompleted()) transactions.rollback(transaction);
+            throw e;
         }
     }
 
-    private void pruneFailures(Account account, Instant now) {
-        Instant cutoff = now.minus(properties.failureWindow());
-        while (!account.failures.isEmpty() && !account.failures.peekFirst().isAfter(cutoff)) account.failures.removeFirst();
-    }
-
-    private void cleanup(Instant now) {
-        if (now.isBefore(nextCleanup)) return;
-        ips.values().removeIf(window -> !now.isBefore(window.expires));
-        accounts.values().removeIf(account -> account.pending == 0
-                && !now.isBefore(account.expires)
-                && (account.lockedUntil == null || !now.isBefore(account.lockedUntil)));
-        nextCleanup = now.plusSeconds(1);
-    }
-
-    private static LoginRateLimitException limited(Instant now, Instant until) {
-        return new LoginRateLimitException((Duration.between(now, until).toMillis() + 999) / 1000);
+    private static String accountKey(String email) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(email.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+        }
     }
 
     public final class Attempt implements AutoCloseable {
-        private final Account account;
+        private final TransactionStatus transaction;
+        private final String accountKey;
+        private final String pairKey;
         private boolean finished;
-        private Attempt(Account account) { this.account = account; }
-        public void failed() { finish(this, true); }
-        public void succeeded() { finish(this, false); }
-        // Infrastructure errors release the reservation without recording a bad password or clearing failures.
-        @Override public void close() {
-            synchronized (LoginThrottle.this) {
-                if (!finished) { finished = true; account.pending--; }
+
+        private Attempt(TransactionStatus transaction, String accountKey, String pairKey) {
+            this.transaction = transaction;
+            this.accountKey = accountKey;
+            this.pairKey = pairKey;
+        }
+
+        public void failed() {
+            finish(() -> {
+                limiter.hit(ACCOUNT_IP, pairKey);
+                limiter.hit(ACCOUNT, accountKey);
+            });
+        }
+
+        public void succeeded() {
+            // 다른 IP의 실패와 계정 전체 실패 이력은 성공 한 번으로 지우지 않는다.
+            finish(() -> limiter.reset(ACCOUNT_IP, pairKey));
+        }
+
+        private void finish(Runnable update) {
+            if (finished) return;
+            try {
+                update.run();
+                // failed는 컨트롤러의 401 예외보다 먼저 커밋해 실패 이력이 롤백되지 않게 한다.
+                transactions.commit(transaction);
+            } catch (RuntimeException | Error e) {
+                if (!transaction.isCompleted()) transactions.rollback(transaction);
+                throw e;
+            } finally {
+                finished = true;
             }
         }
-    }
 
-    private static final class Account {
-        private final Deque<Instant> failures = new ArrayDeque<>();
-        private int pending;
-        private Instant expires;
-        private Instant lockedUntil;
-        private Account(Instant expires) { this.expires = expires; }
-    }
-
-    private static final class IpWindow {
-        private int attempts;
-        private final Instant expires;
-        private IpWindow(Instant expires) { this.expires = expires; }
+        /** DB/JWT 등 내부 오류는 비밀번호 실패로 세지 않고, 기존 실패도 지우지 않는다. */
+        @Override public void close() {
+            if (!finished) {
+                finished = true;
+                if (!transaction.isCompleted()) transactions.rollback(transaction);
+            }
+        }
     }
 }

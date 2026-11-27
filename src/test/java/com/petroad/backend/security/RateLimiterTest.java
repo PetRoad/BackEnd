@@ -102,6 +102,19 @@ class RateLimiterTest {
                 .isInstanceOf(IllegalTransactionStateException.class);
         assertThatThrownBy(() -> limiter.hit("test", "key"))
                 .isInstanceOf(IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> limiter.reset("test", "key"))
+                .isInstanceOf(IllegalTransactionStateException.class);
+    }
+
+    @Test void resetClearsOnlyTheSpecifiedBucketAndKey() {
+        String key = UUID.randomUUID().toString();
+        String other = UUID.randomUUID().toString();
+        assertThat(attempt("reset-one", key)).isTrue();
+        assertThat(attempt("reset-two", key)).isTrue();
+        assertThat(attempt("reset-one", other)).isTrue();
+        transaction.executeWithoutResult(status -> limiter.reset("reset-one", key));
+        assertThat(count(key)).isEqualTo(1);
+        assertThat(count(other)).isEqualTo(1);
     }
 
     @Test void parallelRequestsCannotExceedTheLimit() throws Exception {

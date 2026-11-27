@@ -48,12 +48,18 @@ public class RateLimiter {
         jdbc.update("DELETE FROM rate_limit_hits WHERE id = ?", hitId);
     }
 
+    /** 해당 키만 초기화한다. check/hit과 같은 잠금을 사용해 동시 요청과 충돌하지 않게 한다. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reset(String bucket, String key) {
+        lock(bucket, key);
+        jdbc.update("DELETE FROM rate_limit_hits WHERE bucket = ? AND key = ?", bucket, key);
+    }
+
     /** 최근 window 동안의 기록이 max개 이상이면 LoginRateLimitException을 던진다. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void check(String bucket, String key, int max, Duration window) {
         // 같은 키의 요청은 앞선 트랜잭션이 끝날 때까지 여기서 기다린다.
-        jdbc.query("SELECT pg_advisory_xact_lock(hashtext(?))",
-                (ResultSetExtractor<Void>) rs -> null, bucket + key);
+        lock(bucket, key);
 
         Instant now = clock.instant();
         Usage usage = jdbc.queryForObject(
@@ -79,6 +85,11 @@ public class RateLimiter {
     @Transactional
     public void deleteExpired() {
         jdbc.update("DELETE FROM rate_limit_hits WHERE hit_at < ?", utc(clock.instant().minus(RETENTION)));
+    }
+
+    private void lock(String bucket, String key) {
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtext(?))",
+                (ResultSetExtractor<Void>) rs -> null, bucket + key);
     }
 
     private static OffsetDateTime utc(Instant instant) {

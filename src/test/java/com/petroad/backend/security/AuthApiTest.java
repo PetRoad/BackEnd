@@ -33,19 +33,24 @@ class AuthApiTest {
     private MutableClock clock;
     private PasswordEncoder encoder;
     private RateLimiter rateLimiter;
+    private LoginThrottle throttle;
+    private LoginThrottle.Attempt attempt;
 
     @BeforeEach void setup() {
         users = mock(UserRepository.class);
         encoder = new PasswordConfig().passwordEncoder();
         clock = new MutableClock();
         rateLimiter = mock(RateLimiter.class);
+        throttle = mock(LoginThrottle.class);
+        attempt = mock(LoginThrottle.Attempt.class);
+        when(throttle.begin(anyString(), anyString())).thenReturn(attempt);
         var properties = LoginThrottleTest.settings(5, 30, 100);
         var jwt = new JwtService(JwtServiceTest.KEY, 60000);
         var sessions = mock(RefreshSessionRepository.class);
         when(sessions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var refreshTokens = new RefreshTokenService(sessions, mock(RefreshTokenRepository.class), jwt, clock, Duration.ofDays(30));
         var controller = new AuthController(users, encoder,
-                new LoginThrottle(properties, clock), new ClientIpResolver(properties), refreshTokens, rateLimiter);
+                throttle, new ClientIpResolver(properties), refreshTokens, rateLimiter);
         mvc = MockMvcBuilders.standaloneSetup(controller, new UserController(users))
                 .addMappedInterceptors(new String[]{"/api/users/**"}, new JwtInterceptor(jwt)).setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper)).build();
@@ -171,30 +176,21 @@ class AuthApiTest {
         verifyNoInteractions(users);
     }
 
-    @Test void accountLockCannotBeBypassedByChangingIpOrRepeatedRequestsAndExpires() throws Exception {
-        for (int n = 0; n < 5; n++) {
-            mvc.perform(request("/api/auth/login", "unknown@example.com", "wrong-password", "192.0.2." + n))
-                    .andExpect(status().isUnauthorized());
-        }
+    @Test void limitedLoginReturns429BeforeTouchingUsers() throws Exception {
+        when(throttle.begin("unknown@example.com", "192.0.2.99")).thenThrow(new LoginRateLimitException(900));
         mvc.perform(request("/api/auth/login", "unknown@example.com", "wrong-password", "192.0.2.99"))
                 .andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After", "900"))
                 .andExpect(jsonPath("$.message").isString());
-        verify(users, times(5)).findByEmail("unknown@example.com");
-        clock.advance(Duration.ofMinutes(15));
-        mvc.perform(request("/api/auth/login", "unknown@example.com", "wrong-password", "192.0.2.99"))
-                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(users, attempt);
     }
 
-    @Test void ipLimitAppliesAcrossAccountsAndIgnoresForgedForwardingHeaders() throws Exception {
-        for (int n = 0; n < 30; n++) {
-            mvc.perform(request("/api/auth/login", "unknown" + n + "@example.com", "wrong-password", "192.0.2.1")
-                    .header("CF-Connecting-IP", "192.0.2." + (n + 10)).header("X-Forwarded-For", "192.0.2." + (n + 10)))
-                    .andExpect(status().isUnauthorized());
-        }
-        mvc.perform(request("/api/auth/login", "new@example.com", "wrong-password", "192.0.2.1"))
-                .andExpect(status().isTooManyRequests()).andExpect(header().string("Retry-After", "60"));
-        clock.advance(Duration.ofMinutes(1));
-        mvc.perform(request("/api/auth/login", "new@example.com", "wrong-password", "192.0.2.1"))
+    @Test void loginUsesThePeerAddressAndIgnoresForgedForwardingHeaders() throws Exception {
+        mvc.perform(request("/api/auth/login", "unknown@example.com", "wrong-password", "192.0.2.1")
+                        .header("CF-Connecting-IP", "192.0.2.10").header("X-Forwarded-For", "192.0.2.20"))
                 .andExpect(status().isUnauthorized());
+        verify(throttle).begin("unknown@example.com", "192.0.2.1");
+        verify(attempt).failed();
+        verify(attempt).close();
+        verify(attempt, never()).succeeded();
     }
 }
