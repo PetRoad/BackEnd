@@ -33,7 +33,7 @@ public class LocalImageStorage implements ImageStorage {
     }
 
     @Override
-    public String save(String folder, String filename, MultipartFile file) {
+    public StoredImage save(String folder, String filename, MultipartFile file) {
         Path target = root.resolve(folder).resolve(filename).normalize();
         if (!target.startsWith(root)) throw new IllegalArgumentException("잘못된 저장 경로입니다.");
         try {
@@ -42,6 +42,18 @@ public class LocalImageStorage implements ImageStorage {
         } catch (IOException e) {
             throw new UncheckedIOException("이미지 저장에 실패했습니다.", e);
         }
-        return baseUrl + "/uploads/" + folder + "/" + filename;
+        String publicId = folder + "/" + filename;
+        return new StoredImage(publicId, baseUrl + "/uploads/" + publicId);
+    }
+
+    @Override
+    public void delete(String publicId) {
+        Path target = root.resolve(publicId).normalize();
+        if (!target.startsWith(root) || target.equals(root)) throw new IllegalArgumentException("잘못된 저장 경로입니다.");
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            throw new UncheckedIOException("이미지 삭제에 실패했습니다.", e);
+        }
     }
 }

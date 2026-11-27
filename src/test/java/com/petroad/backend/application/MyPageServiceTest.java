@@ -3,9 +3,9 @@ package com.petroad.backend.application;
 import com.petroad.backend.domain.*;
 import com.petroad.backend.repository.*;
 import com.petroad.backend.storage.ImageStorage;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,7 +22,12 @@ class MyPageServiceTest {
  @Mock CourseRepository courses;
  @Mock CourseLikeRepository likes;
  @Mock ImageStorage images;
- @InjectMocks MyPageService service;
+ @Mock UploadedImageRepository uploadRecords;
+ MyPageService service;
+
+ @BeforeEach void setup() {
+  service=new MyPageService(users,dogs,walks,courses,likes,new UploadedImageService(images,uploadRecords,mock(org.springframework.context.ApplicationEventPublisher.class)));
+ }
 
  @Test void aggregatesOnlyAuthenticatedUsersRecordsAndConvertsKilometers() {
   WalkLog first=new WalkLog(null,null,3.2); first.setDetails("산책",120,List.of("http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg","http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000003.jpg"));
@@ -67,6 +72,19 @@ class MyPageServiceTest {
   assertThrows(IllegalArgumentException.class, () -> service.saveWalk(7L,null,"산책",1,1,
           List.of(),"https://example.com/cover.jpg",null,List.of()));
   verifyNoInteractions(users,walks,courses);
+ }
+
+ @Test void photosUploadedBySomeoneElseAreRejectedBeforePersistence() {
+  String url="http://localhost:8080/uploads/walk_photo/00000000-0000-0000-0000-000000000002.jpg";
+  when(images.isOwnUrl(url)).thenReturn(true);
+  when(uploadRecords.existsByUserIdAndUrl(7L,url)).thenReturn(false);
+  var walkError=assertThrows(IllegalArgumentException.class, () -> service.saveWalk(7L,null,"산책",1,1,
+          List.of(url),url,null,List.of()));
+  assertEquals("photos는 본인이 업로드한 사진이어야 합니다.",walkError.getMessage());
+  var dogError=assertThrows(IllegalArgumentException.class, () -> service.saveDog(7L,"콩이","말티즈",DogSize.SMALL,
+          java.time.LocalDate.of(2024,1,1),url));
+  assertEquals("profileImage는 본인이 업로드한 사진이어야 합니다.",dogError.getMessage());
+  verifyNoInteractions(users,dogs,walks,courses);
  }
 
  @Test void externalDogImageIsRejectedBeforePersistence() {

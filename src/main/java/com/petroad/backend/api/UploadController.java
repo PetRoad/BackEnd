@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.petroad.backend.application.UploadedImageService;
 import com.petroad.backend.security.RateLimiter;
 import com.petroad.backend.storage.ImageStorage;
 import lombok.RequiredArgsConstructor;
@@ -31,11 +32,13 @@ public class UploadController {
 
     private final ImageStorage storage;
     private final RateLimiter rateLimiter;
+    private final UploadedImageService uploadedImages;
     public enum Purpose { WALK_PHOTO, COURSE_COVER, DOG_PROFILE }
 
     public record UploadResponse(String url) {}
 
-    @Operation(summary = "이미지 업로드", description = "사용자당 최근 24시간에 300번까지 업로드할 수 있습니다. 저장에 실패한 업로드는 세지 않습니다.")
+    @Operation(summary = "이미지 업로드", description = "사용자당 최근 24시간에 300번까지 업로드할 수 있습니다. 저장에 실패한 업로드는 세지 않습니다. "
+            + "Cloudinary 저장소에서는 촬영 방향에 맞게 사진을 돌리고, 위치정보를 포함한 메타데이터를 지운 뒤 저장합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "업로드 성공",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = UploadResponse.class))),
@@ -60,10 +63,25 @@ public class UploadController {
                 MAX_UPLOADS_PER_DAY, UPLOAD_WINDOW);
         // 기존: return new UploadResponse("test://" + ...);
         try {
-            String url = storage.save(purpose.name().toLowerCase(), name, file);
-            return new UploadResponse(url);
+            ImageStorage.StoredImage stored = storage.save(purpose.name().toLowerCase(), name, file);
+            recordOrDiscard(userId, stored);
+            return new UploadResponse(stored.url());
         } catch (RuntimeException failure) {
             cancelUploadRecord(hitId, failure);
+            throw failure;
+        }
+    }
+
+    // 기록하지 못한 사진은 아무도 쓸 수 없으므로 파일도 지운다.
+    private void recordOrDiscard(Long userId, ImageStorage.StoredImage stored) {
+        try {
+            uploadedImages.record(userId, stored);
+        } catch (RuntimeException failure) {
+            try {
+                storage.delete(stored.publicId());
+            } catch (RuntimeException deleteFailure) {
+                failure.addSuppressed(deleteFailure);
+            }
             throw failure;
         }
     }

@@ -37,7 +37,7 @@ public class MyPageController {
          @Schema(type = "integer", nullable = true, description = "코스 완주율(0~100). 자유 산책은 null") BigDecimal completion,
          @Size(max = 20000) List<@NotNull @Valid WalkRouteCoordinate> route) {}
 
- @Operation(summary = "내 산책일지 저장", description = "거리는 미터로 받습니다. GPS 경로와 사진은 입력 순서대로 저장합니다.")
+ @Operation(summary = "내 산책일지 저장", description = "거리는 미터로 받습니다. GPS 경로와 사진은 입력 순서대로 저장합니다. photos와 cover에는 본인이 업로드한 사진만 사용할 수 있습니다.")
  @PostMapping("/walks")
  public WalkDetail saveWalk(@RequestAttribute("userId") Long userId, @Valid @RequestBody WalkCreateRequest request) {
   Long courseId;
@@ -52,7 +52,7 @@ public class MyPageController {
  }
  @Operation(summary = "내 산책일지 상세 조회")
  @GetMapping("/walks/{id}") public WalkDetail walk(@RequestAttribute("userId") Long userId,@PathVariable Long id) {return service.walk(userId,id);}
- @Operation(summary = "내 산책일지 삭제", description = "본인의 산책 기록과 연결된 사진 URL 목록을 삭제합니다. 코스와 업로드된 이미지 파일은 삭제하지 않습니다. 다른 사용자 또는 없는 기록은 404입니다.")
+ @Operation(summary = "내 산책일지 삭제", description = "본인의 산책 기록과 연결된 사진 URL 목록을 삭제합니다. 코스는 삭제하지 않습니다. 사진 파일도 저장소에서 삭제하며, 코스 대표 사진처럼 다른 기록이 쓰는 사진은 남깁니다. 다른 사용자 또는 없는 기록은 404입니다.")
  @ApiResponse(responseCode = "204", description = "삭제 완료")
  @ApiResponse(responseCode = "404", description = "본인의 산책 기록을 찾을 수 없음")
  @DeleteMapping("/walks/{id}")
@@ -65,7 +65,7 @@ public class MyPageController {
  @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
  @Schema(name = "MyDogProfileRequest")
  public record DogRequest(@NotBlank @Size(max=100) String name,@NotBlank @Size(max=100) String breed,@NotNull DogSize size,@NotNull @PastOrPresent(message="반려견 생일은 오늘 또는 과거 날짜여야 합니다.") LocalDate birthDate,@Size(max=2048) String profileImage) {}
- @Operation(summary = "내 반려견 정보 등록·수정")
+ @Operation(summary = "내 반려견 정보 등록·수정", description = "profileImage에는 본인이 업로드한 사진만 사용할 수 있습니다. 사진을 바꾸거나 빼면, 다른 기록이 쓰지 않는 이전 사진 파일은 저장소에서 삭제합니다.")
  @PutMapping("/dog") public DogProfile saveDog(@RequestAttribute("userId") Long userId,@Valid @RequestBody DogRequest r) {
   return service.saveDog(userId,r.name().trim(),r.breed().trim(),r.size(),r.birthDate(),r.profileImage());
  }

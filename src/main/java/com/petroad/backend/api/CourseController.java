@@ -6,7 +6,7 @@ import com.petroad.backend.application.CourseRecommendationService;
 import com.petroad.backend.application.MyPageService;
 import com.petroad.backend.application.MyPageService.CourseDetail;
 import com.petroad.backend.application.MyPageService.WalkRouteCoordinate;
-import com.petroad.backend.storage.ImageStorage;
+import com.petroad.backend.application.UploadedImageService;
 import com.petroad.backend.application.CourseRecommendationService.CourseSummary;
 import com.petroad.backend.application.CourseRecommendationService.Recommendations;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,7 +32,7 @@ public class CourseController {
     private final CourseLikeRepository likes;
     private final CourseRecommendationService recommendations;
     private final MyPageService myPage;
-    private final ImageStorage images;
+    private final UploadedImageService uploadedImages;
 
     public record CourseCreateRequest(@NotBlank @Size(max = 30) String name,
                          @Size(max = 2048) String coverImageUrl,
@@ -43,13 +43,11 @@ public class CourseController {
                          @NotNull @Size(min = 2, max = 5000) List<@NotNull @Valid WalkRouteCoordinate> points) {
     }
 
-    @Operation(summary = "산책 코스 등록")
+    @Operation(summary = "산책 코스 등록", description = "coverImageUrl에는 본인이 업로드한 사진만 사용할 수 있습니다.")
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping
     public CourseSummary create(@RequestAttribute("userId") Long userId, @Valid @RequestBody CourseCreateRequest r) {
-        if (r.coverImageUrl() != null && !images.isOwnUrl(r.coverImageUrl())) {
-            throw new IllegalArgumentException("coverImageUrl은 이미지 업로드 API에서 발급한 주소여야 합니다.");
-        }
+        if (r.coverImageUrl() != null) uploadedImages.requireOwned(userId, r.coverImageUrl(), "coverImageUrl");
         User u = users.findById(userId).orElseThrow();
         Course c = new Course(u, r.name(), r.coverImageUrl(), r.distance(), r.difficulty(), r.dogSize(), r.startLat(), r.startLng());
         for (int i = 0; i < r.points().size(); i++) c.addPoint(r.points().get(i).lat(), r.points().get(i).lng(), i);
@@ -76,7 +74,7 @@ public class CourseController {
         return myPage.course(userId, id);
     }
 
-    @Operation(summary = "내가 만든 코스 삭제", description = "코스와 좋아요를 삭제합니다. 기존 산책일지와 완주율은 유지됩니다.")
+    @Operation(summary = "내가 만든 코스 삭제", description = "코스와 좋아요를 삭제합니다. 기존 산책일지와 완주율은 유지됩니다. 대표 사진 파일은 다른 기록이 쓰지 않으면 저장소에서도 삭제합니다.")
     @ApiResponse(responseCode = "204", description = "삭제 완료")
     @ApiResponse(responseCode = "403", description = "코스 작성자만 삭제 가능")
     @ApiResponse(responseCode = "404", description = "코스를 찾을 수 없음")
@@ -87,7 +85,9 @@ public class CourseController {
         if (!course.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "내가 만든 코스만 삭제할 수 있습니다.");
         }
+        String cover = course.getCoverImageUrl();
         courses.delete(course);
+        if (cover != null) uploadedImages.releaseUnused(userId, List.of(cover));
     }
 
     @Operation(summary = "코스 좋아요")

@@ -3,6 +3,7 @@ package com.petroad.backend.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petroad.backend.application.CourseRecommendationService;
 import com.petroad.backend.application.MyPageService;
+import com.petroad.backend.application.UploadedImageService;
 import com.petroad.backend.domain.Course;
 import com.petroad.backend.domain.User;
 import com.petroad.backend.repository.*;
@@ -33,12 +34,14 @@ class InputValidationWebTest {
     private final CourseRepository courses = mock(CourseRepository.class);
     private final MyPageService myPage = mock(MyPageService.class);
     private final CourseRecommendationService recommendations = mock(CourseRecommendationService.class);
+    private final UploadedImageRepository uploadRecords = mock(UploadedImageRepository.class);
     private MockMvc mvc;
 
     @BeforeEach void setup() {
         mvc = MockMvcBuilders.standaloneSetup(
                         new CourseController(courses, users, mock(CourseLikeRepository.class), recommendations,
-                                myPage, new LocalImageStorage("target/test-images", "")),
+                                myPage, new UploadedImageService(new LocalImageStorage("target/test-images", ""), uploadRecords,
+                                        mock(org.springframework.context.ApplicationEventPublisher.class))),
                         new MyPageController(myPage), new UserController(users))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
     }
@@ -95,6 +98,15 @@ class InputValidationWebTest {
         verifyNoInteractions(courses, users);
     }
 
+    @Test void courseCoverUploadedBySomeoneElseIsRejected() throws Exception {
+        Map<String, Object> body = course();
+        body.put("coverImageUrl", "http://localhost:8080/uploads/course_cover/00000000-0000-0000-0000-000000000001.jpg");
+        mvc.perform(post("/api/courses").requestAttr("userId", 7L).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(body)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message", containsString("본인이 업로드한")));
+        verifyNoInteractions(courses, users);
+    }
+
     @Test void exactCourseLimitsAndCoordinateEdgesAreAcceptedInOrder() throws Exception {
         User owner = new User("test@example.com", "hash");
         ReflectionTestUtils.setField(owner, "id", 7L);
@@ -109,7 +121,9 @@ class InputValidationWebTest {
         List<Map<String, Integer>> points = new ArrayList<>(Collections.nCopies(5000, Map.of("lat", -90, "lng", -180)));
         points.set(4999, Map.of("lat", 90, "lng", 180));
         body.put("points", points);
-        body.put("coverImageUrl", "http://localhost:8080/uploads/course_cover/00000000-0000-0000-0000-000000000001.jpg");
+        String cover = "http://localhost:8080/uploads/course_cover/00000000-0000-0000-0000-000000000001.jpg";
+        when(uploadRecords.existsByUserIdAndUrl(7L, cover)).thenReturn(true);
+        body.put("coverImageUrl", cover);
         mvc.perform(post("/api/courses").requestAttr("userId", 7L).contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsBytes(body))).andExpect(status().isOk());
         var saved = org.mockito.ArgumentCaptor.forClass(Course.class);
