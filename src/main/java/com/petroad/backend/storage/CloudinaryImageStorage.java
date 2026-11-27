@@ -15,6 +15,10 @@ import java.util.regex.Pattern;
 @Service
 @ConditionalOnProperty(name = "app.storage.type", havingValue = "cloudinary")
 public class CloudinaryImageStorage implements ImageStorage {
+    // 저장하기 전에 적용하는 변환(incoming transformation). 원본 대신 변환한 결과가 저장된다.
+    // a_exif: 촬영 방향 정보대로 사진을 돌린다. fl_force_strip: 위치정보(GPS)를 포함한 메타데이터를 지운다.
+    private static final String ROTATE_AND_STRIP_METADATA = "a_exif,fl_force_strip";
+
     private final Cloudinary cloudinary;
     private final Pattern ownUrl;
 
@@ -41,7 +45,8 @@ public class CloudinaryImageStorage implements ImageStorage {
         String publicId = "petroad/" + folder + "/" + stripExtension(filename);
         try {
             Map<?, ?> result = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
-                    "public_id", publicId, "resource_type", "image", "overwrite", false));
+                    "public_id", publicId, "resource_type", "image", "overwrite", false,
+                    "transformation", ROTATE_AND_STRIP_METADATA));
             Object url = result.get("secure_url");
             if (url == null) throw new IllegalStateException("이미지 저장소가 주소를 돌려주지 않았습니다.");
             return new StoredImage(publicId, url.toString());

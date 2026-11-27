@@ -37,7 +37,8 @@ public class UploadController {
 
     public record UploadResponse(String url) {}
 
-    @Operation(summary = "이미지 업로드", description = "사용자당 최근 24시간에 300번까지 업로드할 수 있습니다. 저장에 실패한 업로드는 세지 않습니다.")
+    @Operation(summary = "이미지 업로드", description = "사용자당 최근 24시간에 300번까지 업로드할 수 있습니다. 저장에 실패한 업로드는 세지 않습니다. "
+            + "Cloudinary 저장소에서는 촬영 방향에 맞게 사진을 돌리고, 위치정보를 포함한 메타데이터를 지운 뒤 저장합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "업로드 성공",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = UploadResponse.class))),
