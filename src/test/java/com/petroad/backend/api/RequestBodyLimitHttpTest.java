@@ -33,7 +33,8 @@ import static org.mockito.Mockito.when;
         "jwt.secret=body-limit-http-test-only-key-never-deploy-0123456789",
         "spring.datasource.username=petroad_test", "spring.datasource.password=test-only-password",
         "spring.flyway.schemas=body_limit_test", "spring.flyway.default-schema=body_limit_test",
-        "spring.jpa.properties.hibernate.default_schema=body_limit_test"
+        "spring.jpa.properties.hibernate.default_schema=body_limit_test",
+        "spring.datasource.hikari.schema=body_limit_test"
 })
 class RequestBodyLimitHttpTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {

@@ -29,6 +29,15 @@ class ClientIpResolverTest {
         assertThat(resolver(List.of("127.0.0.1")).resolve(request)).isEqualTo("2001:db8:0:0:0:0:0:1");
     }
 
+    @Test void rateLimitKeyGroupsIpv6By64BitPrefixAndKeepsIpv4() {
+        assertThat(ClientIpResolver.rateLimitKey("192.0.2.10")).isEqualTo("192.0.2.10");
+        assertThat(ClientIpResolver.rateLimitKey("2001:db8:1:2::1"))
+                .isEqualTo(ClientIpResolver.rateLimitKey("2001:db8:1:2:ffff:ffff:ffff:ffff"))
+                .isEqualTo("2001:db8:1:2::/64");
+        assertThat(ClientIpResolver.rateLimitKey("2001:db8:1:3::1")).isEqualTo("2001:db8:1:3::/64");
+        assertThat(ClientIpResolver.rateLimitKey("::ffff:192.0.2.10")).isEqualTo("192.0.2.10");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"example.com", "face", "192.0.2.1,192.0.2.2", "999.1.2.3", "", "::invalid"})
     void malformedTrustedHeaderIsRejectedWithoutDnsLookup(String address) {

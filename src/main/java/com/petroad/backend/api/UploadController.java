@@ -1,15 +1,22 @@
 package com.petroad.backend.api;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.petroad.backend.security.RateLimiter;
 import com.petroad.backend.storage.ImageStorage;
 import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.UUID;
 
 
@@ -18,16 +25,29 @@ import java.util.UUID;
 @RequestMapping("/api/uploads")
 @RequiredArgsConstructor
 public class UploadController {
+    private static final String UPLOAD_LIMIT_BUCKET = "upload";
+    private static final int MAX_UPLOADS_PER_DAY = 300;
+    private static final Duration UPLOAD_WINDOW = Duration.ofDays(1);
 
     private final ImageStorage storage;
+    private final RateLimiter rateLimiter;
     public enum Purpose { WALK_PHOTO, COURSE_COVER, DOG_PROFILE }
 
     public record UploadResponse(String url) {}
 
-    @Operation(summary = "이미지 업로드")
+    @Operation(summary = "이미지 업로드", description = "사용자당 최근 24시간에 300번까지 업로드할 수 있습니다. 저장에 실패한 업로드는 세지 않습니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "업로드 성공",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = UploadResponse.class))),
+            @ApiResponse(responseCode = "429", description = "업로드 횟수 제한. Retry-After 초 이후 다시 시도하세요.",
+                    headers = @Header(name = "Retry-After", description = "재시도까지 대기할 초",
+                            schema = @Schema(type = "integer", minimum = "1")),
+                    content = @Content(schema = @Schema(implementation = ApiExceptionHandler.ApiError.class)))
+    })
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public UploadResponse upload(@RequestParam("file") MultipartFile file,
+    public UploadResponse upload(@RequestAttribute("userId") Long userId,
+                                 @RequestParam("file") MultipartFile file,
                                  @RequestParam("purpose") Purpose purpose) {
         if (file.isEmpty()) throw new IllegalArgumentException("파일이 비어 있습니다.");
 
@@ -35,9 +55,26 @@ public class UploadController {
         if (extension == null) throw new IllegalArgumentException("jpg, png, webp 이미지만 올릴 수 있습니다.");
 
         String name = UUID.randomUUID() + "." + extension;
+        // 앱은 사진 여러 장을 동시에 올린다. 저장하는 동안 잠그지 않도록 횟수를 먼저 기록하고, 저장에 실패하면 취소한다.
+        long hitId = rateLimiter.consume(UPLOAD_LIMIT_BUCKET, String.valueOf(userId),
+                MAX_UPLOADS_PER_DAY, UPLOAD_WINDOW);
         // 기존: return new UploadResponse("test://" + ...);
-        String url = storage.save(purpose.name().toLowerCase(), name, file);
-        return new UploadResponse(url);
+        try {
+            String url = storage.save(purpose.name().toLowerCase(), name, file);
+            return new UploadResponse(url);
+        } catch (RuntimeException failure) {
+            cancelUploadRecord(hitId, failure);
+            throw failure;
+        }
+    }
+
+    // 취소까지 실패해도 원래 저장 오류가 가려지지 않게 한다.
+    private void cancelUploadRecord(long hitId, RuntimeException saveFailure) {
+        try {
+            rateLimiter.cancel(hitId);
+        } catch (RuntimeException cancelFailure) {
+            saveFailure.addSuppressed(cancelFailure);
+        }
     }
 
     // 파일 이름이 아니라 파일 맨 앞 몇 바이트(진짜 이미지인지 알려주는 표식)를 본다

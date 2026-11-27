@@ -30,6 +30,7 @@ class OpenApiSecurityTest {
     @MockBean private RefreshTokenRepository refreshTokens;
     @MockBean private RefreshSessionRepository refreshSessions;
     @MockBean private javax.sql.DataSource dataSource;
+    @MockBean private RateLimiter rateLimiter;
 
     @Test void bootBindsDefaultSecuritySettingsAndPublishesPasswordErrorsAndRetryAfter() throws Exception {
         String json = mvc.perform(get("/v3/api-docs"))
@@ -38,6 +39,10 @@ class OpenApiSecurityTest {
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['400']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath("$.paths['/api/auth/signup'].post.responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath("$.paths['/api/uploads'].post.responses['200'].content").exists())
+                .andExpect(jsonPath("$.paths['/api/uploads'].post.responses['429'].headers['Retry-After']").exists())
+                .andExpect(jsonPath("$.paths['/api/me'].delete.responses['429'].headers['Retry-After']").exists())
                 .andExpect(jsonPath("$.components.schemas.Login.properties.password.description")
                         .value(org.hamcrest.Matchers.containsString("72바이트")))
                 .andExpect(jsonPath("$.components.schemas.Signup.properties.password.description")
